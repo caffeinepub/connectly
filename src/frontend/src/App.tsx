@@ -1510,6 +1510,151 @@ function AdCard({ adIndex }: { adIndex: number }) {
   );
 }
 
+// ─── SHARE TO FRIEND MODAL ────────────────────────────────────────────────────
+function ShareToFriendModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = USERS.filter(
+    (u) =>
+      search === "" ||
+      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.username.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  function handleShare(u: AppUser) {
+    toast.success(`Post shared with @${u.username}! 📤`);
+    onClose();
+  }
+
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+      role="presentation"
+    >
+      <div
+        className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
+        style={{ backgroundColor: "var(--app-card)" }}
+        data-ocid="share_friends.modal"
+      >
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b"
+          style={{ borderColor: "var(--app-border)" }}
+        >
+          <span
+            className="font-semibold text-sm"
+            style={{ color: "var(--app-text)" }}
+          >
+            Share with Friends
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-full hover:bg-muted"
+            style={{ color: "var(--app-text-muted)" }}
+            data-ocid="share_friends.close_button"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="px-4 pt-3 pb-1">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search friends..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full px-3 py-2 pl-8 text-sm rounded-lg border outline-none"
+              style={{
+                backgroundColor: "var(--app-bg)",
+                borderColor: "var(--app-border)",
+                color: "var(--app-text)",
+              }}
+              data-ocid="share_friends.search_input"
+            />
+            <svg
+              aria-label="Search"
+              role="img"
+              className="absolute left-2.5 top-2.5 w-3.5 h-3.5"
+              style={{ color: "var(--app-text-muted)" }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <title>Search</title>
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </div>
+        </div>
+        <div className="flex flex-col gap-0 max-h-72 overflow-y-auto px-4 py-2">
+          {filtered.length === 0 ? (
+            <p
+              className="text-sm text-center py-4"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              No users found
+            </p>
+          ) : (
+            filtered.map((u, i) => (
+              <div
+                key={u.id}
+                className="flex items-center gap-3 py-2.5 border-b last:border-0"
+                style={{ borderColor: "var(--app-border)" }}
+                data-ocid={`share_friends.item.${i + 1}`}
+              >
+                <Avatar className="w-10 h-10 flex-shrink-0">
+                  <AvatarImage src={u.avatar} alt={u.name} />
+                  <AvatarFallback>{u.name[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="text-sm font-semibold truncate"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {u.name}
+                  </p>
+                  <p
+                    className="text-xs truncate"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    @{u.username}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="text-xs h-8 px-3 flex-shrink-0"
+                  onClick={() => handleShare(u)}
+                  data-ocid={`share_friends.secondary_button.${i + 1}`}
+                  style={{
+                    background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                    color: "white",
+                    border: "none",
+                  }}
+                >
+                  Send
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // PostCard
 function PostCard({
   post,
@@ -1538,6 +1683,12 @@ function PostCard({
   const [expandedReplies, setExpandedReplies] = useState<
     Record<number, boolean>
   >({});
+  const [showShareModal, setShowShareModal] = useState(false);
+  // replyingToReply: { commentId, replyUsername } when replying to a reply
+  const [_replyingToReply, setReplyingToReply] = useState<{
+    commentId: number;
+    replyUsername: string;
+  } | null>(null);
   const [postInterest, setPostInterest] = useState<
     "interested" | "not_interested" | null
   >(null);
@@ -1550,7 +1701,7 @@ function PostCard({
   }
 
   function handleShare() {
-    toast.success("Post shared! 📤");
+    setShowShareModal(true);
   }
 
   function handleSubmitComment() {
@@ -1864,19 +2015,40 @@ function PostCard({
                     style={{ borderColor: "var(--app-border)" }}
                   >
                     {c.replies!.map((r) => (
-                      <div key={r.id} className="flex gap-1.5 items-start">
-                        <span
-                          className="text-[11px] font-semibold mr-1"
-                          style={{ color: "var(--app-text)" }}
+                      <div key={r.id} className="flex flex-col gap-0.5">
+                        <div className="flex gap-1.5 items-start flex-wrap">
+                          <span
+                            className="text-[11px] font-semibold mr-1"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {r.username}
+                          </span>
+                          <span
+                            className="text-[11px]"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {r.text}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplyingToReply({
+                              commentId: c.id,
+                              replyUsername: r.username,
+                            });
+                            setReplyingTo(c.id);
+                            setReplyInputs((prev) => ({
+                              ...prev,
+                              [c.id]: `@${r.username} `,
+                            }));
+                          }}
+                          className="text-[10px] font-medium leading-none self-start"
+                          style={{ color: "var(--app-text-muted)" }}
+                          data-ocid={`feed.item.${post.id}.secondary_button`}
                         >
-                          {r.username}
-                        </span>
-                        <span
-                          className="text-[11px]"
-                          style={{ color: "var(--app-text)" }}
-                        >
-                          {r.text}
-                        </span>
+                          Reply
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1952,6 +2124,10 @@ function PostCard({
           </div>
         )}
       </div>
+      <ShareToFriendModal
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+      />
     </article>
   );
 }
@@ -4241,6 +4417,8 @@ function ProfilePage({
     id: number;
     image: string;
   } | null>(null);
+  const [showOwnProfileShareModal, setShowOwnProfileShareModal] =
+    useState(false);
   const [selectedProfilePost, setSelectedProfilePost] = useState<{
     id: number;
     image: string;
@@ -4280,375 +4458,358 @@ function ProfilePage({
   }));
 
   return (
-    <div className="flex flex-col gap-6 pb-4" data-ocid="profile.page">
-      {/* Header */}
-      <div
-        className="rounded-xl border border-border p-6"
-        style={{ backgroundColor: "var(--app-card)" }}
-      >
-        <div className="flex items-start gap-5">
-          <div className="relative">
-            <div
-              style={{
-                background:
-                  "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
-                padding: 3,
-                borderRadius: "50%",
-              }}
-            >
-              <div className="bg-background rounded-full p-1">
-                <Avatar className="w-20 h-20">
-                  <AvatarImage src={profile.avatar} alt={profile.name} />
-                  <AvatarFallback>Y</AvatarFallback>
-                </Avatar>
+    <>
+      <div className="flex flex-col gap-6 pb-4" data-ocid="profile.page">
+        {/* Header */}
+        <div
+          className="rounded-xl border border-border p-6"
+          style={{ backgroundColor: "var(--app-card)" }}
+        >
+          <div className="flex items-start gap-5">
+            <div className="relative">
+              <div
+                style={{
+                  background:
+                    "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
+                  padding: 3,
+                  borderRadius: "50%",
+                }}
+              >
+                <div className="bg-background rounded-full p-1">
+                  <Avatar className="w-20 h-20">
+                    <AvatarImage src={profile.avatar} alt={profile.name} />
+                    <AvatarFallback>Y</AvatarFallback>
+                  </Avatar>
+                </div>
               </div>
             </div>
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h1
-                className="text-xl font-bold"
-                style={{ color: "var(--app-text)" }}
-              >
-                {profile.username}
-              </h1>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-lg border-border text-sm h-8 px-4"
-                  onClick={onEditProfile}
-                  data-ocid="profile.edit_button"
+            <div className="flex-1">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h1
+                  className="text-xl font-bold"
+                  style={{ color: "var(--app-text)" }}
                 >
-                  Edit Profile
-                </Button>
-                <button
-                  type="button"
-                  onClick={onToggleDark}
-                  className="p-2 rounded-lg border border-border hover:bg-muted"
-                  data-ocid="profile.toggle"
-                >
-                  {darkMode ? (
-                    <Sun
-                      className="w-4 h-4"
-                      style={{ color: "var(--app-text)" }}
-                    />
-                  ) : (
-                    <Moon
-                      className="w-4 h-4"
-                      style={{ color: "var(--app-text)" }}
-                    />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-lg border border-border hover:bg-muted"
-                  data-ocid="profile.button"
-                >
-                  <Settings
-                    className="w-4 h-4"
-                    style={{ color: "var(--app-text)" }}
-                  />
-                </button>
-                {onLogout && (
+                  {profile.username}
+                </h1>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-lg border-border text-sm h-8 px-4"
+                    onClick={onEditProfile}
+                    data-ocid="profile.edit_button"
+                  >
+                    Edit Profile
+                  </Button>
                   <button
                     type="button"
-                    onClick={onLogout}
-                    className="p-2 rounded-lg border border-destructive hover:bg-destructive/10 transition-colors"
-                    title="Logout"
-                    data-ocid="profile.delete_button"
+                    onClick={onToggleDark}
+                    className="p-2 rounded-lg border border-border hover:bg-muted"
+                    data-ocid="profile.toggle"
                   >
-                    <LogOut className="w-4 h-4 text-destructive" />
+                    {darkMode ? (
+                      <Sun
+                        className="w-4 h-4"
+                        style={{ color: "var(--app-text)" }}
+                      />
+                    ) : (
+                      <Moon
+                        className="w-4 h-4"
+                        style={{ color: "var(--app-text)" }}
+                      />
+                    )}
                   </button>
-                )}
+                  <button
+                    type="button"
+                    className="p-2 rounded-lg border border-border hover:bg-muted"
+                    data-ocid="profile.button"
+                  >
+                    <Settings
+                      className="w-4 h-4"
+                      style={{ color: "var(--app-text)" }}
+                    />
+                  </button>
+                  {onLogout && (
+                    <button
+                      type="button"
+                      onClick={onLogout}
+                      className="p-2 rounded-lg border border-destructive hover:bg-destructive/10 transition-colors"
+                      title="Logout"
+                      data-ocid="profile.delete_button"
+                    >
+                      <LogOut className="w-4 h-4 text-destructive" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-            <p className="text-sm mt-1" style={{ color: "var(--app-text)" }}>
-              {profile.name}
-            </p>
-            {profile.bio && (
+              <p className="text-sm mt-1" style={{ color: "var(--app-text)" }}>
+                {profile.name}
+              </p>
+              {profile.bio && (
+                <p
+                  className="text-[10px] font-semibold uppercase tracking-wider mt-2"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  Description
+                </p>
+              )}
               <p
-                className="text-[10px] font-semibold uppercase tracking-wider mt-2"
+                className="text-sm mt-1"
                 style={{ color: "var(--app-text-muted)" }}
               >
-                Description
+                {profile.bio}
               </p>
-            )}
-            <p
-              className="text-sm mt-1"
-              style={{ color: "var(--app-text-muted)" }}
-            >
-              {profile.bio}
-            </p>
-            {principal && (
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <div
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg w-fit"
-                  style={{ backgroundColor: "var(--app-card)" }}
-                >
-                  <Shield
-                    className="w-3 h-3 flex-shrink-0"
-                    style={{ color: "#c44dff" }}
-                  />
-                  <span
-                    className="text-xs font-mono"
-                    style={{ color: "var(--app-text-muted)" }}
+              {principal && (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <div
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-lg w-fit"
+                    style={{ backgroundColor: "var(--app-card)" }}
                   >
-                    {principal.slice(0, 12)}...
-                  </span>
-                </div>
-                {loginMethod && (
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={
-                      loginMethod === "internet-identity"
-                        ? {
-                            background: "rgba(196,77,255,0.15)",
-                            color: "#c44dff",
-                          }
-                        : {
-                            background: "rgba(255,107,157,0.15)",
-                            color: "#ff6b9d",
-                          }
-                    }
-                  >
-                    {loginMethod === "internet-identity"
-                      ? "🔐 Biometric"
-                      : "📧 Email/Password"}
-                  </span>
-                )}
-              </div>
-            )}
-            <div className="flex gap-6 mt-3">
-              <div className="text-center">
-                <p
-                  className="font-bold text-base"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {formatCount(CURRENT_USER.posts)}
-                </p>
-                <p
-                  className="text-xs"
-                  style={{ color: "var(--app-text-muted)" }}
-                >
-                  Posts
-                </p>
-              </div>
-              <button
-                type="button"
-                className="text-center hover:opacity-70"
-                onClick={() => setShowFollowersModal(true)}
-                data-ocid="profile.followers.button"
-              >
-                <p
-                  className="font-bold text-base"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {formatCount(CURRENT_USER.followers)}
-                </p>
-                <p
-                  className="text-xs"
-                  style={{ color: "var(--app-text-muted)" }}
-                >
-                  Followers
-                </p>
-              </button>
-              <button
-                type="button"
-                className="text-center hover:opacity-70"
-                onClick={() => setShowFollowingModal(true)}
-                data-ocid="profile.following.button"
-              >
-                <p
-                  className="font-bold text-base"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {formatCount(CURRENT_USER.following)}
-                </p>
-                <p
-                  className="text-xs"
-                  style={{ color: "var(--app-text-muted)" }}
-                >
-                  Following
-                </p>
-              </button>
-            </div>
-            {/* Followers Modal */}
-            <Dialog
-              open={showFollowersModal}
-              onOpenChange={setShowFollowersModal}
-            >
-              <DialogContent
-                className="max-w-sm max-h-[85vh] flex flex-col"
-                data-ocid="profile.followers.dialog"
-              >
-                <DialogHeader>
-                  <DialogTitle>Followers</DialogTitle>
-                </DialogHeader>
-                <div className="relative mb-1">
-                  <input
-                    type="text"
-                    placeholder="Search followers..."
-                    value={followersSearch}
-                    onChange={(e) => setFollowersSearch(e.target.value)}
-                    className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/30"
-                    style={{ color: "var(--app-text)" }}
-                  />
-                  <svg
-                    aria-label="Search"
-                    role="img"
-                    className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <title>Search</title>
-                    <circle cx="11" cy="11" r="8" />
-                    <path d="m21 21-4.35-4.35" />
-                  </svg>
-                </div>
-                <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2 scrollbar-thin">
-                  {USERS.slice(0, 6)
-                    .filter(
-                      (u) =>
-                        !blockedUsers.has(u.id) &&
-                        (followersSearch === "" ||
-                          u.name
-                            .toLowerCase()
-                            .includes(followersSearch.toLowerCase()) ||
-                          u.username
-                            .toLowerCase()
-                            .includes(followersSearch.toLowerCase())),
-                    )
-                    .map((u) => (
-                      <div key={u.id} className="flex items-center gap-3">
-                        <Avatar className="w-10 h-10">
-                          <AvatarImage src={u.avatar} alt={u.name} />
-                          <AvatarFallback>{u.name[0]}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className="text-sm font-semibold truncate"
-                            style={{ color: "var(--app-text)" }}
-                          >
-                            {u.name}
-                          </p>
-                          <p
-                            className="text-xs truncate"
-                            style={{ color: "var(--app-text-muted)" }}
-                          >
-                            @{u.username}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant={
-                            followedUsers.has(u.id) ? "outline" : "default"
-                          }
-                          className="text-xs h-7 px-3"
-                          onClick={() => onToggleFollow(u.id)}
-                          data-ocid="profile.followers.toggle"
-                        >
-                          {followedUsers.has(u.id) ? "Following" : "Follow"}
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded hover:bg-muted"
-                              data-ocid="profile.followers.dropdown_menu"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="text-destructive cursor-pointer"
-                              onClick={() => {
-                                setBlockedUsers(
-                                  (prev) => new Set([...prev, u.id]),
-                                );
-                                toast.error(
-                                  `@${u.username} को block कर दिया गया`,
-                                );
-                              }}
-                            >
-                              🚫 Block
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              onClick={() => {
-                                toast(`@${u.username} की रिपोर्ट भेज दी गई`, {
-                                  description: "हमारी team 24 घंटे में review करेगी",
-                                });
-                              }}
-                            >
-                              🚩 Report
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ))}
-                </div>
-              </DialogContent>
-            </Dialog>
-            {/* Following Modal */}
-            <Dialog
-              open={showFollowingModal}
-              onOpenChange={setShowFollowingModal}
-            >
-              <DialogContent
-                className="max-w-sm max-h-[85vh] flex flex-col"
-                data-ocid="profile.following.dialog"
-              >
-                <DialogHeader>
-                  <DialogTitle>Following</DialogTitle>
-                </DialogHeader>
-                <div className="relative mb-1">
-                  <input
-                    type="text"
-                    placeholder="Search following..."
-                    value={followingSearch}
-                    onChange={(e) => setFollowingSearch(e.target.value)}
-                    className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/30"
-                    style={{ color: "var(--app-text)" }}
-                  />
-                  <svg
-                    aria-label="Search"
-                    role="img"
-                    className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <title>Search</title>
-                    <circle cx="11" cy="11" r="8" />
-                    <path d="m21 21-4.35-4.35" />
-                  </svg>
-                </div>
-                <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2 scrollbar-thin">
-                  {USERS.filter(
-                    (u) =>
-                      followedUsers.has(u.id) &&
-                      (followingSearch === "" ||
-                        u.name
-                          .toLowerCase()
-                          .includes(followingSearch.toLowerCase()) ||
-                        u.username
-                          .toLowerCase()
-                          .includes(followingSearch.toLowerCase())),
-                  ).length === 0 ? (
-                    <p
-                      className="text-sm text-center py-4"
+                    <Shield
+                      className="w-3 h-3 flex-shrink-0"
+                      style={{ color: "#c44dff" }}
+                    />
+                    <span
+                      className="text-xs font-mono"
                       style={{ color: "var(--app-text-muted)" }}
                     >
-                      You are not following anyone yet.
-                    </p>
-                  ) : (
-                    USERS.filter(
+                      {principal.slice(0, 12)}...
+                    </span>
+                  </div>
+                  {loginMethod && (
+                    <span
+                      className="text-xs px-2 py-0.5 rounded-full font-medium"
+                      style={
+                        loginMethod === "internet-identity"
+                          ? {
+                              background: "rgba(196,77,255,0.15)",
+                              color: "#c44dff",
+                            }
+                          : {
+                              background: "rgba(255,107,157,0.15)",
+                              color: "#ff6b9d",
+                            }
+                      }
+                    >
+                      {loginMethod === "internet-identity"
+                        ? "🔐 Biometric"
+                        : "📧 Email/Password"}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="flex gap-6 mt-3">
+                <div className="text-center">
+                  <p
+                    className="font-bold text-base"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {formatCount(CURRENT_USER.posts)}
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Posts
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="text-center hover:opacity-70"
+                  onClick={() => setShowFollowersModal(true)}
+                  data-ocid="profile.followers.button"
+                >
+                  <p
+                    className="font-bold text-base"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {formatCount(CURRENT_USER.followers)}
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Followers
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="text-center hover:opacity-70"
+                  onClick={() => setShowFollowingModal(true)}
+                  data-ocid="profile.following.button"
+                >
+                  <p
+                    className="font-bold text-base"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {formatCount(CURRENT_USER.following)}
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Following
+                  </p>
+                </button>
+              </div>
+              {/* Followers Modal */}
+              <Dialog
+                open={showFollowersModal}
+                onOpenChange={setShowFollowersModal}
+              >
+                <DialogContent
+                  className="max-w-sm max-h-[85vh] flex flex-col"
+                  data-ocid="profile.followers.dialog"
+                >
+                  <DialogHeader>
+                    <DialogTitle>Followers</DialogTitle>
+                  </DialogHeader>
+                  <div className="relative mb-1">
+                    <input
+                      type="text"
+                      placeholder="Search followers..."
+                      value={followersSearch}
+                      onChange={(e) => setFollowersSearch(e.target.value)}
+                      className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/30"
+                      style={{ color: "var(--app-text)" }}
+                    />
+                    <svg
+                      aria-label="Search"
+                      role="img"
+                      className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <title>Search</title>
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
+                    </svg>
+                  </div>
+                  <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2 scrollbar-thin">
+                    {USERS.slice(0, 6)
+                      .filter(
+                        (u) =>
+                          !blockedUsers.has(u.id) &&
+                          (followersSearch === "" ||
+                            u.name
+                              .toLowerCase()
+                              .includes(followersSearch.toLowerCase()) ||
+                            u.username
+                              .toLowerCase()
+                              .includes(followersSearch.toLowerCase())),
+                      )
+                      .map((u) => (
+                        <div key={u.id} className="flex items-center gap-3">
+                          <Avatar className="w-10 h-10">
+                            <AvatarImage src={u.avatar} alt={u.name} />
+                            <AvatarFallback>{u.name[0]}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className="text-sm font-semibold truncate"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {u.name}
+                            </p>
+                            <p
+                              className="text-xs truncate"
+                              style={{ color: "var(--app-text-muted)" }}
+                            >
+                              @{u.username}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={
+                              followedUsers.has(u.id) ? "outline" : "default"
+                            }
+                            className="text-xs h-7 px-3"
+                            onClick={() => onToggleFollow(u.id)}
+                            data-ocid="profile.followers.toggle"
+                          >
+                            {followedUsers.has(u.id) ? "Following" : "Follow"}
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="p-1 rounded hover:bg-muted"
+                                data-ocid="profile.followers.dropdown_menu"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="text-destructive cursor-pointer"
+                                onClick={() => {
+                                  setBlockedUsers(
+                                    (prev) => new Set([...prev, u.id]),
+                                  );
+                                  toast.error(
+                                    `@${u.username} को block कर दिया गया`,
+                                  );
+                                }}
+                              >
+                                🚫 Block
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => {
+                                  toast(`@${u.username} की रिपोर्ट भेज दी गई`, {
+                                    description:
+                                      "हमारी team 24 घंटे में review करेगी",
+                                  });
+                                }}
+                              >
+                                🚩 Report
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
+              {/* Following Modal */}
+              <Dialog
+                open={showFollowingModal}
+                onOpenChange={setShowFollowingModal}
+              >
+                <DialogContent
+                  className="max-w-sm max-h-[85vh] flex flex-col"
+                  data-ocid="profile.following.dialog"
+                >
+                  <DialogHeader>
+                    <DialogTitle>Following</DialogTitle>
+                  </DialogHeader>
+                  <div className="relative mb-1">
+                    <input
+                      type="text"
+                      placeholder="Search following..."
+                      value={followingSearch}
+                      onChange={(e) => setFollowingSearch(e.target.value)}
+                      className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/30"
+                      style={{ color: "var(--app-text)" }}
+                    />
+                    <svg
+                      aria-label="Search"
+                      role="img"
+                      className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <title>Search</title>
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
+                    </svg>
+                  </div>
+                  <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2 scrollbar-thin">
+                    {USERS.filter(
                       (u) =>
                         followedUsers.has(u.id) &&
-                        !blockedUsers.has(u.id) &&
                         (followingSearch === "" ||
                           u.name
                             .toLowerCase()
@@ -4656,652 +4817,686 @@ function ProfilePage({
                           u.username
                             .toLowerCase()
                             .includes(followingSearch.toLowerCase())),
-                    ).map((u) => (
-                      <div key={u.id} className="flex items-center gap-3">
-                        <Avatar className="w-10 h-10">
-                          <AvatarImage src={u.avatar} alt={u.name} />
-                          <AvatarFallback>{u.name[0]}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className="text-sm font-semibold truncate"
-                            style={{ color: "var(--app-text)" }}
-                          >
-                            {u.name}
-                          </p>
-                          <p
-                            className="text-xs truncate"
-                            style={{ color: "var(--app-text-muted)" }}
-                          >
-                            @{u.username}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs h-7 px-3"
-                          onClick={() => onToggleFollow(u.id)}
-                          data-ocid="profile.following.toggle"
-                        >
-                          Unfollow
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded hover:bg-muted"
-                              data-ocid="profile.following.dropdown_menu"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="text-destructive cursor-pointer"
-                              onClick={() => {
-                                setBlockedUsers(
-                                  (prev) => new Set([...prev, u.id]),
-                                );
-                                toast.error(
-                                  `@${u.username} को block कर दिया गया`,
-                                );
-                              }}
-                            >
-                              🚫 Block
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="cursor-pointer"
-                              onClick={() => {
-                                toast(`@${u.username} की रिपोर्ट भेज दी गई`, {
-                                  description: "हमारी team 24 घंटे में review करेगी",
-                                });
-                              }}
-                            >
-                              🚩 Report
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-
-        {/* Privacy */}
-        <div className="flex items-center justify-between mt-5 pt-5 border-t border-border">
-          <div>
-            <p
-              className="text-sm font-semibold"
-              style={{ color: "var(--app-text)" }}
-            >
-              Private Account
-            </p>
-            <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
-              Only approved followers can see your posts
-            </p>
-          </div>
-          <Switch
-            checked={isPrivate}
-            onCheckedChange={setIsPrivate}
-            data-ocid="profile.switch"
-          />
-        </div>
-
-        {/* Blocked Accounts */}
-        <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-          <div>
-            <p
-              className="text-sm font-semibold"
-              style={{ color: "var(--app-text)" }}
-            >
-              Blocked Accounts
-            </p>
-            <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
-              {blockedUsers.size} account{blockedUsers.size !== 1 ? "s" : ""}{" "}
-              blocked
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs h-7 px-3"
-            onClick={() => setShowBlockedModal(true)}
-            data-ocid="profile.blocked.button"
-          >
-            Manage
-          </Button>
-        </div>
-
-        {/* Blocked Accounts Dialog */}
-        <Dialog open={showBlockedModal} onOpenChange={setShowBlockedModal}>
-          <DialogContent
-            className="max-w-sm"
-            data-ocid="profile.blocked.dialog"
-          >
-            <DialogHeader>
-              <DialogTitle>Blocked Accounts</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-3 max-h-80 overflow-y-auto">
-              {USERS.filter((u) => blockedUsers.has(u.id)).length === 0 ? (
-                <p
-                  className="text-sm text-center py-4"
-                  style={{ color: "var(--app-text-muted)" }}
-                >
-                  कोई blocked account नहीं है।
-                </p>
-              ) : (
-                USERS.filter((u) => blockedUsers.has(u.id)).map((u) => (
-                  <div key={u.id} className="flex items-center gap-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={u.avatar} alt={u.name} />
-                      <AvatarFallback>{u.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
+                    ).length === 0 ? (
                       <p
-                        className="text-sm font-semibold truncate"
-                        style={{ color: "var(--app-text)" }}
-                      >
-                        {u.name}
-                      </p>
-                      <p
-                        className="text-xs truncate"
+                        className="text-sm text-center py-4"
                         style={{ color: "var(--app-text-muted)" }}
                       >
-                        @{u.username}
+                        You are not following anyone yet.
                       </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-7 px-3"
-                      onClick={() => {
-                        setBlockedUsers((prev) => {
-                          const next = new Set(prev);
-                          next.delete(u.id);
-                          return next;
-                        });
-                        toast.success(`@${u.username} को unblock कर दिया`);
-                      }}
-                      data-ocid="profile.blocked.button"
-                    >
-                      Unblock
-                    </Button>
+                    ) : (
+                      USERS.filter(
+                        (u) =>
+                          followedUsers.has(u.id) &&
+                          !blockedUsers.has(u.id) &&
+                          (followingSearch === "" ||
+                            u.name
+                              .toLowerCase()
+                              .includes(followingSearch.toLowerCase()) ||
+                            u.username
+                              .toLowerCase()
+                              .includes(followingSearch.toLowerCase())),
+                      ).map((u) => (
+                        <div key={u.id} className="flex items-center gap-3">
+                          <Avatar className="w-10 h-10">
+                            <AvatarImage src={u.avatar} alt={u.name} />
+                            <AvatarFallback>{u.name[0]}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p
+                              className="text-sm font-semibold truncate"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {u.name}
+                            </p>
+                            <p
+                              className="text-xs truncate"
+                              style={{ color: "var(--app-text-muted)" }}
+                            >
+                              @{u.username}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7 px-3"
+                            onClick={() => onToggleFollow(u.id)}
+                            data-ocid="profile.following.toggle"
+                          >
+                            Unfollow
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className="p-1 rounded hover:bg-muted"
+                                data-ocid="profile.following.dropdown_menu"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="text-destructive cursor-pointer"
+                                onClick={() => {
+                                  setBlockedUsers(
+                                    (prev) => new Set([...prev, u.id]),
+                                  );
+                                  toast.error(
+                                    `@${u.username} को block कर दिया गया`,
+                                  );
+                                }}
+                              >
+                                🚫 Block
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => {
+                                  toast(`@${u.username} की रिपोर्ट भेज दी गई`, {
+                                    description:
+                                      "हमारी team 24 घंटे में review करेगी",
+                                  });
+                                }}
+                              >
+                                🚩 Report
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      ))
+                    )}
                   </div>
-                ))
-              )}
+                </DialogContent>
+              </Dialog>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+          </div>
 
-      {/* Tabs: Posts / Saved */}
-      <div>
-        <div
-          className="flex border-b mb-3"
-          style={{ borderColor: "var(--app-border)" }}
-        >
-          {(["posts", "saved", "tagged"] as const).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setProfileActiveTab(tab)}
-              className="flex-1 py-2.5 text-sm font-medium transition-colors"
-              style={{
-                color:
-                  profileActiveTab === tab
-                    ? "var(--app-accent)"
-                    : "var(--app-text-muted)",
-                borderBottom:
-                  profileActiveTab === tab
-                    ? "2px solid var(--app-accent)"
-                    : "2px solid transparent",
-              }}
-              data-ocid={`profile.${tab}.tab`}
+          {/* Privacy */}
+          <div className="flex items-center justify-between mt-5 pt-5 border-t border-border">
+            <div>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: "var(--app-text)" }}
+              >
+                Private Account
+              </p>
+              <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
+                Only approved followers can see your posts
+              </p>
+            </div>
+            <Switch
+              checked={isPrivate}
+              onCheckedChange={setIsPrivate}
+              data-ocid="profile.switch"
+            />
+          </div>
+
+          {/* Blocked Accounts */}
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+            <div>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: "var(--app-text)" }}
+              >
+                Blocked Accounts
+              </p>
+              <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
+                {blockedUsers.size} account{blockedUsers.size !== 1 ? "s" : ""}{" "}
+                blocked
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-7 px-3"
+              onClick={() => setShowBlockedModal(true)}
+              data-ocid="profile.blocked.button"
             >
-              {tab === "posts"
-                ? "📷 Posts"
-                : tab === "saved"
-                  ? "🔖 Saved"
-                  : "🏷️ Tagged"}
-            </button>
-          ))}
+              Manage
+            </Button>
+          </div>
+
+          {/* Blocked Accounts Dialog */}
+          <Dialog open={showBlockedModal} onOpenChange={setShowBlockedModal}>
+            <DialogContent
+              className="max-w-sm"
+              data-ocid="profile.blocked.dialog"
+            >
+              <DialogHeader>
+                <DialogTitle>Blocked Accounts</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-3 max-h-80 overflow-y-auto">
+                {USERS.filter((u) => blockedUsers.has(u.id)).length === 0 ? (
+                  <p
+                    className="text-sm text-center py-4"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    कोई blocked account नहीं है।
+                  </p>
+                ) : (
+                  USERS.filter((u) => blockedUsers.has(u.id)).map((u) => (
+                    <div key={u.id} className="flex items-center gap-3">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={u.avatar} alt={u.name} />
+                        <AvatarFallback>{u.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm font-semibold truncate"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          {u.name}
+                        </p>
+                        <p
+                          className="text-xs truncate"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          @{u.username}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs h-7 px-3"
+                        onClick={() => {
+                          setBlockedUsers((prev) => {
+                            const next = new Set(prev);
+                            next.delete(u.id);
+                            return next;
+                          });
+                          toast.success(`@${u.username} को unblock कर दिया`);
+                        }}
+                        data-ocid="profile.blocked.button"
+                      >
+                        Unblock
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
-        {profileActiveTab === "posts" ? (
-          <div className="grid grid-cols-3 gap-1" data-ocid="profile.list">
-            {profilePosts.map((post, i) => (
+        {/* Tabs: Posts / Saved */}
+        <div>
+          <div
+            className="flex border-b mb-3"
+            style={{ borderColor: "var(--app-border)" }}
+          >
+            {(["posts", "saved", "tagged"] as const).map((tab) => (
               <button
+                key={tab}
                 type="button"
-                key={post.id}
-                className="relative aspect-square overflow-hidden rounded-lg group"
-                data-ocid={`profile.item.${i + 1}`}
-                onClick={() => setSelectedProfilePost(post)}
+                onClick={() => setProfileActiveTab(tab)}
+                className="flex-1 py-2.5 text-sm font-medium transition-colors"
+                style={{
+                  color:
+                    profileActiveTab === tab
+                      ? "var(--app-accent)"
+                      : "var(--app-text-muted)",
+                  borderBottom:
+                    profileActiveTab === tab
+                      ? "2px solid var(--app-accent)"
+                      : "2px solid transparent",
+                }}
+                data-ocid={`profile.${tab}.tab`}
               >
-                <img
-                  src={post.image}
-                  alt="post"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
-                />
-                {post.caption && (
-                  <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                    <p className="text-white text-[10px] leading-tight line-clamp-2 text-left">
-                      {post.caption}
-                    </p>
-                  </div>
-                )}
+                {tab === "posts"
+                  ? "📷 Posts"
+                  : tab === "saved"
+                    ? "🔖 Saved"
+                    : "🏷️ Tagged"}
               </button>
             ))}
           </div>
-        ) : profileActiveTab === "saved" ? (
-          savedReelsList.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center py-16 gap-3"
-              style={{ color: "var(--app-text-muted)" }}
-              data-ocid="profile.saved.empty"
-            >
-              <Bookmark className="w-12 h-12 opacity-30" />
-              <p className="text-sm">कोई saved reel नहीं</p>
-              <p className="text-xs opacity-60">Reels में 🔖 tap करके save करें</p>
+
+          {profileActiveTab === "posts" ? (
+            <div className="grid grid-cols-3 gap-1" data-ocid="profile.list">
+              {profilePosts.map((post, i) => (
+                <button
+                  type="button"
+                  key={post.id}
+                  className="relative aspect-square overflow-hidden rounded-lg group"
+                  data-ocid={`profile.item.${i + 1}`}
+                  onClick={() => setSelectedProfilePost(post)}
+                >
+                  <img
+                    src={post.image}
+                    alt="post"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                  />
+                  {post.caption && (
+                    <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                      <p className="text-white text-[10px] leading-tight line-clamp-2 text-left">
+                        {post.caption}
+                      </p>
+                    </div>
+                  )}
+                </button>
+              ))}
             </div>
+          ) : profileActiveTab === "saved" ? (
+            savedReelsList.length === 0 ? (
+              <div
+                className="flex flex-col items-center justify-center py-16 gap-3"
+                style={{ color: "var(--app-text-muted)" }}
+                data-ocid="profile.saved.empty"
+              >
+                <Bookmark className="w-12 h-12 opacity-30" />
+                <p className="text-sm">कोई saved reel नहीं</p>
+                <p className="text-xs opacity-60">Reels में 🔖 tap करके save करें</p>
+              </div>
+            ) : (
+              <div
+                className="grid grid-cols-3 gap-1"
+                data-ocid="profile.saved.list"
+              >
+                {savedReelsList.map((reel, i) => (
+                  <div
+                    key={reel.id}
+                    className="relative aspect-square overflow-hidden rounded-lg group bg-black"
+                    data-ocid={`profile.saved.item.${i + 1}`}
+                  >
+                    {reel.videoUrl ? (
+                      <video
+                        src={reel.videoUrl}
+                        className="w-full h-full object-cover opacity-80"
+                        muted
+                        playsInline
+                      />
+                    ) : (
+                      <img
+                        src={reel.image}
+                        alt={reel.caption}
+                        className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
+                      />
+                    )}
+                    <div className="absolute top-1.5 right-1.5">
+                      <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                    </div>
+                    <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
+                      <p className="text-white text-[10px] leading-tight line-clamp-1">
+                        {reel.caption}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           ) : (
             <div
               className="grid grid-cols-3 gap-1"
-              data-ocid="profile.saved.list"
+              data-ocid="profile.tagged.list"
             >
-              {savedReelsList.map((reel, i) => (
-                <div
-                  key={reel.id}
-                  className="relative aspect-square overflow-hidden rounded-lg group bg-black"
-                  data-ocid={`profile.saved.item.${i + 1}`}
+              {Array.from({ length: 6 }, (_, i) => ({
+                id: i + 1,
+                image: `https://picsum.photos/seed/tagged${i + 1}/300/300`,
+              })).map((post, i) => (
+                <button
+                  type="button"
+                  key={post.id}
+                  className="relative aspect-square overflow-hidden rounded-lg group"
+                  data-ocid={`profile.tagged.item.${i + 1}`}
+                  onClick={() => setSelectedTaggedPost(post)}
                 >
-                  {reel.videoUrl ? (
-                    <video
-                      src={reel.videoUrl}
-                      className="w-full h-full object-cover opacity-80"
-                      muted
-                      playsInline
-                    />
-                  ) : (
-                    <img
-                      src={reel.image}
-                      alt={reel.caption}
-                      className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
-                    />
-                  )}
-                  <div className="absolute top-1.5 right-1.5">
-                    <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                  <img
+                    src={post.image}
+                    alt="tagged post"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                  />
+                  <div className="absolute top-1.5 right-1.5 bg-black/50 rounded-full p-0.5">
+                    <span className="text-[10px]">🏷️</span>
                   </div>
-                  <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
-                    <p className="text-white text-[10px] leading-tight line-clamp-1">
-                      {reel.caption}
-                    </p>
-                  </div>
-                </div>
+                </button>
               ))}
             </div>
-          )
-        ) : (
+          )}
+        </div>
+        {selectedProfilePost && (
           <div
-            className="grid grid-cols-3 gap-1"
-            data-ocid="profile.tagged.list"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            data-ocid="profile.post.modal"
           >
-            {Array.from({ length: 6 }, (_, i) => ({
-              id: i + 1,
-              image: `https://picsum.photos/seed/tagged${i + 1}/300/300`,
-            })).map((post, i) => (
-              <button
-                type="button"
-                key={post.id}
-                className="relative aspect-square overflow-hidden rounded-lg group"
-                data-ocid={`profile.tagged.item.${i + 1}`}
-                onClick={() => setSelectedTaggedPost(post)}
-              >
-                <img
-                  src={post.image}
-                  alt="tagged post"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
-                />
-                <div className="absolute top-1.5 right-1.5 bg-black/50 rounded-full p-0.5">
-                  <span className="text-[10px]">🏷️</span>
+            <button
+              type="button"
+              aria-label="Close"
+              className="absolute inset-0 w-full h-full cursor-default"
+              onClick={() => setSelectedProfilePost(null)}
+            />
+            <div
+              className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xl z-10"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <Avatar className="w-7 h-7">
+                    <AvatarImage src={profile.avatar} alt={profile.name} />
+                    <AvatarFallback>{profile.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <span className="font-semibold text-sm">
+                    {profile.username}
+                  </span>
                 </div>
-              </button>
-            ))}
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setSelectedProfilePost(null)}
+                  data-ocid="profile.post.close_button"
+                >
+                  ✕
+                </button>
+              </div>
+              <img
+                src={selectedProfilePost.image}
+                alt="post"
+                className="w-full aspect-square object-cover"
+              />
+              {selectedProfilePost.caption && (
+                <div className="px-4 py-2 border-b border-border">
+                  <p className="text-sm" style={{ color: "var(--app-text)" }}>
+                    <span className="font-semibold mr-1">
+                      {profile.username}
+                    </span>
+                    {selectedProfilePost.caption}
+                  </p>
+                </div>
+              )}
+              <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${profilePostLiked.has(selectedProfilePost.id) ? "text-red-500" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() =>
+                    setProfilePostLiked((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(selectedProfilePost.id))
+                        next.delete(selectedProfilePost.id);
+                      else next.add(selectedProfilePost.id);
+                      return next;
+                    })
+                  }
+                  data-ocid="profile.post.like"
+                >
+                  <span>
+                    {profilePostLiked.has(selectedProfilePost.id) ? "❤️" : "🤍"}
+                  </span>
+                  <span>
+                    {profilePostLiked.has(selectedProfilePost.id) ? 121 : 120}{" "}
+                    likes
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() =>
+                    document
+                      .getElementById("profile-post-comment-input")
+                      ?.focus()
+                  }
+                  data-ocid="profile.post.comment"
+                >
+                  <span>💬</span>
+                  <span>
+                    {(profilePostComments[selectedProfilePost.id]?.length ??
+                      0) + 3}{" "}
+                    comments
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                  onClick={() => setShowOwnProfileShareModal(true)}
+                  data-ocid="profile.post.share"
+                >
+                  <span>📤</span>
+                </button>
+              </div>
+              <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">priya_k</span>{" "}
+                  Beautiful! ✨
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    rahul_dev
+                  </span>{" "}
+                  🔥🔥
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">neha_s</span>{" "}
+                  Love this vibe 😍
+                </p>
+                {(profilePostComments[selectedProfilePost.id] || []).map(
+                  (c) => (
+                    <p key={c} className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        {profile.username}
+                      </span>{" "}
+                      {c}
+                    </p>
+                  ),
+                )}
+              </div>
+              <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
+                <input
+                  id="profile-post-comment-input"
+                  type="text"
+                  placeholder="Add a comment..."
+                  value={profilePostCommentInput}
+                  onChange={(e) => setProfilePostCommentInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      profilePostCommentInput.trim() &&
+                      selectedProfilePost
+                    ) {
+                      setProfilePostComments((prev) => ({
+                        ...prev,
+                        [selectedProfilePost.id]: [
+                          ...(prev[selectedProfilePost.id] || []),
+                          profilePostCommentInput.trim(),
+                        ],
+                      }));
+                      setProfilePostCommentInput("");
+                    }
+                  }}
+                  className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                  data-ocid="profile.post.input"
+                />
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-primary disabled:opacity-40"
+                  disabled={!profilePostCommentInput.trim()}
+                  onClick={() => {
+                    if (profilePostCommentInput.trim() && selectedProfilePost) {
+                      setProfilePostComments((prev) => ({
+                        ...prev,
+                        [selectedProfilePost.id]: [
+                          ...(prev[selectedProfilePost.id] || []),
+                          profilePostCommentInput.trim(),
+                        ],
+                      }));
+                      setProfilePostCommentInput("");
+                    }
+                  }}
+                  data-ocid="profile.post.send"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedTaggedPost && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            data-ocid="tagged.modal"
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              className="absolute inset-0 w-full h-full cursor-default"
+              onClick={() => setSelectedTaggedPost(null)}
+            />
+            <div
+              className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xl z-10"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <span className="font-semibold text-sm">@_you</span>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setSelectedTaggedPost(null)}
+                  data-ocid="tagged.close_button"
+                >
+                  ✕
+                </button>
+              </div>
+              {/* Image */}
+              <img
+                src={selectedTaggedPost.image}
+                alt="tagged post"
+                className="w-full aspect-square object-cover"
+              />
+              {/* Actions */}
+              <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${taggedLiked.has(selectedTaggedPost.id) ? "text-red-500" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() =>
+                    setTaggedLiked((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(selectedTaggedPost.id))
+                        next.delete(selectedTaggedPost.id);
+                      else next.add(selectedTaggedPost.id);
+                      return next;
+                    })
+                  }
+                  data-ocid="tagged.toggle"
+                >
+                  <span>
+                    {taggedLiked.has(selectedTaggedPost.id) ? "❤️" : "🤍"}
+                  </span>
+                  <span>
+                    {taggedLiked.has(selectedTaggedPost.id) ? 243 : 242} likes
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() =>
+                    document.getElementById("tagged-comment-input")?.focus()
+                  }
+                  data-ocid="tagged.secondary_button"
+                >
+                  <span>💬</span>
+                  <span>
+                    {(taggedComments[selectedTaggedPost.id]?.length ?? 0) + 4}{" "}
+                    comments
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(window.location.href);
+                  }}
+                  data-ocid="tagged.button"
+                >
+                  <span>📤</span>
+                </button>
+              </div>
+              {/* Comments */}
+              <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    rahul_dev
+                  </span>{" "}
+                  Great shot! 🔥
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">priya_k</span>{" "}
+                  Love this ✨
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    amit_photo
+                  </span>{" "}
+                  Amazing vibes 😍
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">neha_s</span>{" "}
+                  So good! 🙌
+                </p>
+                {(taggedComments[selectedTaggedPost.id] || []).map((c) => (
+                  <p key={c} className="text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">you</span>{" "}
+                    {c}
+                  </p>
+                ))}
+              </div>
+              {/* Comment input */}
+              <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
+                <input
+                  id="tagged-comment-input"
+                  type="text"
+                  placeholder="Add a comment..."
+                  value={taggedCommentInput}
+                  onChange={(e) => setTaggedCommentInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      taggedCommentInput.trim() &&
+                      selectedTaggedPost
+                    ) {
+                      setTaggedComments((prev) => ({
+                        ...prev,
+                        [selectedTaggedPost.id]: [
+                          ...(prev[selectedTaggedPost.id] || []),
+                          taggedCommentInput.trim(),
+                        ],
+                      }));
+                      setTaggedCommentInput("");
+                    }
+                  }}
+                  className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                  data-ocid="tagged.input"
+                />
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-primary disabled:opacity-40"
+                  disabled={!taggedCommentInput.trim()}
+                  onClick={() => {
+                    if (taggedCommentInput.trim() && selectedTaggedPost) {
+                      setTaggedComments((prev) => ({
+                        ...prev,
+                        [selectedTaggedPost.id]: [
+                          ...(prev[selectedTaggedPost.id] || []),
+                          taggedCommentInput.trim(),
+                        ],
+                      }));
+                      setTaggedCommentInput("");
+                    }
+                  }}
+                  data-ocid="tagged.submit_button"
+                >
+                  Send
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-      {selectedProfilePost && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          data-ocid="profile.post.modal"
-        >
-          <button
-            type="button"
-            aria-label="Close"
-            className="absolute inset-0 w-full h-full cursor-default"
-            onClick={() => setSelectedProfilePost(null)}
-          />
-          <div
-            className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xl z-10"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-2">
-                <Avatar className="w-7 h-7">
-                  <AvatarImage src={profile.avatar} alt={profile.name} />
-                  <AvatarFallback>{profile.name[0]}</AvatarFallback>
-                </Avatar>
-                <span className="font-semibold text-sm">
-                  {profile.username}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setSelectedProfilePost(null)}
-                data-ocid="profile.post.close_button"
-              >
-                ✕
-              </button>
-            </div>
-            <img
-              src={selectedProfilePost.image}
-              alt="post"
-              className="w-full aspect-square object-cover"
-            />
-            {selectedProfilePost.caption && (
-              <div className="px-4 py-2 border-b border-border">
-                <p className="text-sm" style={{ color: "var(--app-text)" }}>
-                  <span className="font-semibold mr-1">{profile.username}</span>
-                  {selectedProfilePost.caption}
-                </p>
-              </div>
-            )}
-            <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
-              <button
-                type="button"
-                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${profilePostLiked.has(selectedProfilePost.id) ? "text-red-500" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() =>
-                  setProfilePostLiked((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(selectedProfilePost.id))
-                      next.delete(selectedProfilePost.id);
-                    else next.add(selectedProfilePost.id);
-                    return next;
-                  })
-                }
-                data-ocid="profile.post.like"
-              >
-                <span>
-                  {profilePostLiked.has(selectedProfilePost.id) ? "❤️" : "🤍"}
-                </span>
-                <span>
-                  {profilePostLiked.has(selectedProfilePost.id) ? 121 : 120}{" "}
-                  likes
-                </span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() =>
-                  document.getElementById("profile-post-comment-input")?.focus()
-                }
-                data-ocid="profile.post.comment"
-              >
-                <span>💬</span>
-                <span>
-                  {(profilePostComments[selectedProfilePost.id]?.length ?? 0) +
-                    3}{" "}
-                  comments
-                </span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors ml-auto"
-                onClick={() => {
-                  navigator.clipboard?.writeText(window.location.href);
-                }}
-                data-ocid="profile.post.share"
-              >
-                <span>📤</span>
-              </button>
-            </div>
-            <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">priya_k</span>{" "}
-                Beautiful! ✨
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">rahul_dev</span>{" "}
-                🔥🔥
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">neha_s</span>{" "}
-                Love this vibe 😍
-              </p>
-              {(profilePostComments[selectedProfilePost.id] || []).map((c) => (
-                <p key={c} className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">
-                    {profile.username}
-                  </span>{" "}
-                  {c}
-                </p>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
-              <input
-                id="profile-post-comment-input"
-                type="text"
-                placeholder="Add a comment..."
-                value={profilePostCommentInput}
-                onChange={(e) => setProfilePostCommentInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    profilePostCommentInput.trim() &&
-                    selectedProfilePost
-                  ) {
-                    setProfilePostComments((prev) => ({
-                      ...prev,
-                      [selectedProfilePost.id]: [
-                        ...(prev[selectedProfilePost.id] || []),
-                        profilePostCommentInput.trim(),
-                      ],
-                    }));
-                    setProfilePostCommentInput("");
-                  }
-                }}
-                className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
-                data-ocid="profile.post.input"
-              />
-              <button
-                type="button"
-                className="text-sm font-semibold text-primary disabled:opacity-40"
-                disabled={!profilePostCommentInput.trim()}
-                onClick={() => {
-                  if (profilePostCommentInput.trim() && selectedProfilePost) {
-                    setProfilePostComments((prev) => ({
-                      ...prev,
-                      [selectedProfilePost.id]: [
-                        ...(prev[selectedProfilePost.id] || []),
-                        profilePostCommentInput.trim(),
-                      ],
-                    }));
-                    setProfilePostCommentInput("");
-                  }
-                }}
-                data-ocid="profile.post.send"
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedTaggedPost && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          data-ocid="tagged.modal"
-        >
-          <button
-            type="button"
-            aria-label="Close"
-            className="absolute inset-0 w-full h-full cursor-default"
-            onClick={() => setSelectedTaggedPost(null)}
-          />
-          <div
-            className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xl z-10"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="font-semibold text-sm">@_you</span>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setSelectedTaggedPost(null)}
-                data-ocid="tagged.close_button"
-              >
-                ✕
-              </button>
-            </div>
-            {/* Image */}
-            <img
-              src={selectedTaggedPost.image}
-              alt="tagged post"
-              className="w-full aspect-square object-cover"
-            />
-            {/* Actions */}
-            <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
-              <button
-                type="button"
-                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${taggedLiked.has(selectedTaggedPost.id) ? "text-red-500" : "text-muted-foreground hover:text-foreground"}`}
-                onClick={() =>
-                  setTaggedLiked((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(selectedTaggedPost.id))
-                      next.delete(selectedTaggedPost.id);
-                    else next.add(selectedTaggedPost.id);
-                    return next;
-                  })
-                }
-                data-ocid="tagged.toggle"
-              >
-                <span>
-                  {taggedLiked.has(selectedTaggedPost.id) ? "❤️" : "🤍"}
-                </span>
-                <span>
-                  {taggedLiked.has(selectedTaggedPost.id) ? 243 : 242} likes
-                </span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() =>
-                  document.getElementById("tagged-comment-input")?.focus()
-                }
-                data-ocid="tagged.secondary_button"
-              >
-                <span>💬</span>
-                <span>
-                  {(taggedComments[selectedTaggedPost.id]?.length ?? 0) + 4}{" "}
-                  comments
-                </span>
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors ml-auto"
-                onClick={() => {
-                  navigator.clipboard?.writeText(window.location.href);
-                }}
-                data-ocid="tagged.button"
-              >
-                <span>📤</span>
-              </button>
-            </div>
-            {/* Comments */}
-            <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">rahul_dev</span>{" "}
-                Great shot! 🔥
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">priya_k</span>{" "}
-                Love this ✨
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">
-                  amit_photo
-                </span>{" "}
-                Amazing vibes 😍
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">neha_s</span> So
-                good! 🙌
-              </p>
-              {(taggedComments[selectedTaggedPost.id] || []).map((c) => (
-                <p key={c} className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">you</span> {c}
-                </p>
-              ))}
-            </div>
-            {/* Comment input */}
-            <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
-              <input
-                id="tagged-comment-input"
-                type="text"
-                placeholder="Add a comment..."
-                value={taggedCommentInput}
-                onChange={(e) => setTaggedCommentInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    taggedCommentInput.trim() &&
-                    selectedTaggedPost
-                  ) {
-                    setTaggedComments((prev) => ({
-                      ...prev,
-                      [selectedTaggedPost.id]: [
-                        ...(prev[selectedTaggedPost.id] || []),
-                        taggedCommentInput.trim(),
-                      ],
-                    }));
-                    setTaggedCommentInput("");
-                  }
-                }}
-                className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
-                data-ocid="tagged.input"
-              />
-              <button
-                type="button"
-                className="text-sm font-semibold text-primary disabled:opacity-40"
-                disabled={!taggedCommentInput.trim()}
-                onClick={() => {
-                  if (taggedCommentInput.trim() && selectedTaggedPost) {
-                    setTaggedComments((prev) => ({
-                      ...prev,
-                      [selectedTaggedPost.id]: [
-                        ...(prev[selectedTaggedPost.id] || []),
-                        taggedCommentInput.trim(),
-                      ],
-                    }));
-                    setTaggedCommentInput("");
-                  }
-                }}
-                data-ocid="tagged.submit_button"
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <ShareToFriendModal
+        open={showOwnProfileShareModal}
+        onClose={() => setShowOwnProfileShareModal(false)}
+      />
+    </>
   );
 }
 
@@ -6807,6 +7002,7 @@ function UserProfileModal({
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [localLiked, setLocalLiked] = useState<Set<number>>(new Set());
+  const [showProfileShareModal, setShowProfileShareModal] = useState(false);
   const [showUserFollowersModal, setShowUserFollowersModal] = useState(false);
   const [showUserFollowingModal, setShowUserFollowingModal] = useState(false);
   const [userFollowersSearch, setUserFollowersSearch] = useState("");
@@ -7372,7 +7568,8 @@ function UserProfileModal({
                   <button
                     type="button"
                     className="ml-auto"
-                    onClick={() => toast.success("Post shared! 📤")}
+                    onClick={() => setShowProfileShareModal(true)}
+                    data-ocid="user_profile_modal.secondary_button"
                   >
                     <Share2
                       className="w-6 h-6"
@@ -7609,6 +7806,10 @@ function UserProfileModal({
           </div>
         </DialogContent>
       </Dialog>
+      <ShareToFriendModal
+        open={showProfileShareModal}
+        onClose={() => setShowProfileShareModal(false)}
+      />
     </>
   );
 }
