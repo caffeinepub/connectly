@@ -4688,6 +4688,7 @@ function BottomNav({
     { id: "notifications" as Page, icon: <Bell className="w-6 h-6" /> },
     { id: "profile" as Page, icon: <UserIcon className="w-6 h-6" /> },
     { id: "reels" as Page, icon: <Play className="w-6 h-6" /> },
+    { id: "ai" as Page, icon: <Sparkles className="w-6 h-6" /> },
   ];
 
   return (
@@ -4696,7 +4697,7 @@ function BottomNav({
       style={{ backgroundColor: "var(--app-nav)" }}
       data-ocid="nav.panel"
     >
-      {items.slice(0, 2).map((item) => {
+      {items.slice(0, 3).map((item) => {
         const isActive = activePage === item.id;
         return (
           <button
@@ -4749,7 +4750,7 @@ function BottomNav({
         <Plus className="w-6 h-6" />
       </button>
 
-      {items.slice(2).map((item) => {
+      {items.slice(3).map((item) => {
         const isActive = activePage === item.id;
         return (
           <button
