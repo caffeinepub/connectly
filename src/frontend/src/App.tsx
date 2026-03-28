@@ -3343,7 +3343,7 @@ function NotificationItem({
           className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
         />
       )}
-      {n.type === "follow" && (
+      {
         <Button
           size="sm"
           onClick={() =>
@@ -3368,7 +3368,7 @@ function NotificationItem({
         >
           {followedUsers.has(n.user.id) ? "Following" : "Follow"}
         </Button>
-      )}
+      }
     </div>
   );
 }
