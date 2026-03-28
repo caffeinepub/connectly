@@ -1309,7 +1309,8 @@ function StoryViewer({
 function StoryAvatar({
   story,
   onClick,
-}: { story: Story; onClick: () => void }) {
+  isFollowed,
+}: { story: Story; onClick: () => void; isFollowed?: boolean }) {
   return (
     <button
       type="button"
@@ -1319,10 +1320,16 @@ function StoryAvatar({
     >
       <div
         className={`rounded-full p-[2px] ${
-          story.isCurrentUser ? "bg-muted" : story.seen ? "bg-muted" : ""
+          story.isCurrentUser
+            ? "bg-muted"
+            : story.seen
+              ? "bg-muted"
+              : isFollowed === false
+                ? "border-2 border-gray-400"
+                : ""
         }`}
         style={
-          !story.isCurrentUser && !story.seen
+          !story.isCurrentUser && !story.seen && isFollowed !== false
             ? {
                 background:
                   "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
@@ -1891,7 +1898,7 @@ function HomePage({
     if (s.isCurrentUser) return true;
     const withinDay =
       !s.createdAt || Date.now() - s.createdAt.getTime() < 24 * 60 * 60 * 1000;
-    return withinDay && followedUsers.has(s.user.id);
+    return withinDay;
   });
 
   return (
@@ -1927,6 +1934,11 @@ function HomePage({
             <StoryAvatar
               key={story.id}
               story={story}
+              isFollowed={
+                story.isCurrentUser
+                  ? undefined
+                  : followedUsers.has(story.user.id)
+              }
               onClick={
                 story.isCurrentUser
                   ? () => setCreateStoryOpen(true)
@@ -3810,6 +3822,8 @@ function ProfilePage({
   onLogout,
   profile,
   onEditProfile,
+  followedUsers,
+  onToggleFollow,
 }: {
   darkMode: boolean;
   onToggleDark: () => void;
@@ -3818,8 +3832,12 @@ function ProfilePage({
   onLogout?: () => void;
   profile: ProfileState;
   onEditProfile: () => void;
+  followedUsers: Set<number>;
+  onToggleFollow: (id: number) => void;
 }) {
   const [isPrivate, setIsPrivate] = useState(CURRENT_USER.isPrivate);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [showFollowingModal, setShowFollowingModal] = useState(false);
   const profilePosts = Array.from({ length: 9 }, (_, i) => ({
     id: i + 1,
     image: `https://picsum.photos/seed/profile${i + 1}/300/300`,
@@ -3958,27 +3976,164 @@ function ProfilePage({
               </div>
             )}
             <div className="flex gap-6 mt-3">
-              {[
-                { label: "Posts", value: CURRENT_USER.posts },
-                { label: "Followers", value: CURRENT_USER.followers },
-                { label: "Following", value: CURRENT_USER.following },
-              ].map((stat) => (
-                <div key={stat.label} className="text-center">
-                  <p
-                    className="font-bold text-base"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {formatCount(stat.value)}
-                  </p>
-                  <p
-                    className="text-xs"
-                    style={{ color: "var(--app-text-muted)" }}
-                  >
-                    {stat.label}
-                  </p>
-                </div>
-              ))}
+              <div className="text-center">
+                <p
+                  className="font-bold text-base"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {formatCount(CURRENT_USER.posts)}
+                </p>
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  Posts
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-center hover:opacity-70"
+                onClick={() => setShowFollowersModal(true)}
+                data-ocid="profile.followers.button"
+              >
+                <p
+                  className="font-bold text-base"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {formatCount(CURRENT_USER.followers)}
+                </p>
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  Followers
+                </p>
+              </button>
+              <button
+                type="button"
+                className="text-center hover:opacity-70"
+                onClick={() => setShowFollowingModal(true)}
+                data-ocid="profile.following.button"
+              >
+                <p
+                  className="font-bold text-base"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {formatCount(CURRENT_USER.following)}
+                </p>
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  Following
+                </p>
+              </button>
             </div>
+            {/* Followers Modal */}
+            <Dialog
+              open={showFollowersModal}
+              onOpenChange={setShowFollowersModal}
+            >
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.followers.dialog"
+              >
+                <DialogHeader>
+                  <DialogTitle>Followers</DialogTitle>
+                </DialogHeader>
+                <div className="flex flex-col gap-3 max-h-80 overflow-y-auto">
+                  {USERS.slice(0, 6).map((u) => (
+                    <div key={u.id} className="flex items-center gap-3">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={u.avatar} alt={u.name} />
+                        <AvatarFallback>{u.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm font-semibold truncate"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          {u.name}
+                        </p>
+                        <p
+                          className="text-xs truncate"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          @{u.username}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={
+                          followedUsers.has(u.id) ? "outline" : "default"
+                        }
+                        className="text-xs h-7 px-3"
+                        onClick={() => onToggleFollow(u.id)}
+                        data-ocid="profile.followers.toggle"
+                      >
+                        {followedUsers.has(u.id) ? "Following" : "Follow"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
+            {/* Following Modal */}
+            <Dialog
+              open={showFollowingModal}
+              onOpenChange={setShowFollowingModal}
+            >
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.following.dialog"
+              >
+                <DialogHeader>
+                  <DialogTitle>Following</DialogTitle>
+                </DialogHeader>
+                <div className="flex flex-col gap-3 max-h-80 overflow-y-auto">
+                  {USERS.filter((u) => followedUsers.has(u.id)).length === 0 ? (
+                    <p
+                      className="text-sm text-center py-4"
+                      style={{ color: "var(--app-text-muted)" }}
+                    >
+                      You are not following anyone yet.
+                    </p>
+                  ) : (
+                    USERS.filter((u) => followedUsers.has(u.id)).map((u) => (
+                      <div key={u.id} className="flex items-center gap-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarImage src={u.avatar} alt={u.name} />
+                          <AvatarFallback>{u.name[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className="text-sm font-semibold truncate"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {u.name}
+                          </p>
+                          <p
+                            className="text-xs truncate"
+                            style={{ color: "var(--app-text-muted)" }}
+                          >
+                            @{u.username}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs h-7 px-3"
+                          onClick={() => onToggleFollow(u.id)}
+                          data-ocid="profile.following.toggle"
+                        >
+                          Unfollow
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -5668,6 +5823,15 @@ export default function App() {
             onLogout={combinedLogout}
             profile={profile}
             onEditProfile={() => setEditProfileOpen(true)}
+            followedUsers={followedUsers}
+            onToggleFollow={(id) =>
+              setFollowedUsers((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
           />
         );
       case "ai":
