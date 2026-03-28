@@ -4162,7 +4162,7 @@ function ProfilePage({
               onOpenChange={setShowFollowersModal}
             >
               <DialogContent
-                className="max-w-sm"
+                className="max-w-sm max-h-[85vh] flex flex-col"
                 data-ocid="profile.followers.dialog"
               >
                 <DialogHeader>
@@ -4190,7 +4190,7 @@ function ProfilePage({
                     <path d="m21 21-4.35-4.35" />
                   </svg>
                 </div>
-                <div className="flex flex-col gap-3 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
+                <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2 scrollbar-thin">
                   {USERS.slice(0, 6)
                     .filter(
                       (u) =>
@@ -4281,7 +4281,7 @@ function ProfilePage({
               onOpenChange={setShowFollowingModal}
             >
               <DialogContent
-                className="max-w-sm"
+                className="max-w-sm max-h-[85vh] flex flex-col"
                 data-ocid="profile.following.dialog"
               >
                 <DialogHeader>
@@ -4309,7 +4309,7 @@ function ProfilePage({
                     <path d="m21 21-4.35-4.35" />
                   </svg>
                 </div>
-                <div className="flex flex-col gap-3 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
+                <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2 scrollbar-thin">
                   {USERS.filter(
                     (u) =>
                       followedUsers.has(u.id) &&
