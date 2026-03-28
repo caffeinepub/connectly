@@ -7,6 +7,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
 import { Switch } from "@/components/ui/switch";
@@ -30,12 +36,14 @@ import {
   MessageCircle,
   Moon,
   MoreHorizontal,
+  MoreVertical,
   Music,
   Play,
   Plus,
   Search,
   Send,
   Settings,
+  Share2,
   Shield,
   Smile,
   Sparkles,
@@ -339,14 +347,14 @@ function EditProfileDialog({
               className="text-xs font-medium"
               style={{ color: "var(--app-text-muted)" }}
             >
-              Bio
+              Description
             </label>
             <Textarea
               id="edit-bio"
               value={bio}
-              onChange={(e) => setBio(e.target.value.slice(0, 150))}
-              placeholder="Tell something about yourself..."
-              rows={3}
+              onChange={(e) => setBio(e.target.value.slice(0, 300))}
+              placeholder="अपने बारे में लिखें... (Describe yourself)"
+              rows={4}
               className="rounded-lg resize-none"
               data-ocid="edit_profile.textarea"
             />
@@ -354,7 +362,7 @@ function EditProfileDialog({
               className="text-xs text-right"
               style={{ color: "var(--app-text-muted)" }}
             >
-              {bio.length}/150
+              {bio.length}/300
             </p>
           </div>
 
@@ -1503,11 +1511,13 @@ function PostCard({
   onLike,
   onBookmark,
   onComment,
+  onOpenUserProfile,
 }: {
   post: Post;
   onLike: (id: number) => void;
   onBookmark: (id: number) => void;
   onComment: (id: number, text: string) => void;
+  onOpenUserProfile?: (user: AppUser) => void;
 }) {
   const [likeScale, setLikeScale] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -1575,7 +1585,12 @@ function PostCard({
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
+        <button
+          type="button"
+          className="flex items-center gap-3 active:opacity-70 transition-opacity"
+          onClick={() => onOpenUserProfile?.(post.user)}
+          data-ocid={`feed.item.${post.id}.link`}
+        >
           <Avatar className="w-9 h-9">
             <AvatarImage src={post.user.avatar} alt={post.user.name} />
             <AvatarFallback>{post.user.name[0]}</AvatarFallback>
@@ -1594,7 +1609,7 @@ function PostCard({
               {post.time}
             </p>
           </div>
-        </div>
+        </button>
         <button
           type="button"
           className="p-1 rounded-full hover:bg-muted active:scale-95 transition-transform duration-150"
@@ -1878,6 +1893,7 @@ function HomePage({
   stories,
   onAddStory,
   followedUsers,
+  onOpenUserProfile,
 }: {
   posts: Post[];
   onLike: (id: number) => void;
@@ -1890,6 +1906,7 @@ function HomePage({
     mentions: string[];
   }) => void;
   followedUsers: Set<number>;
+  onOpenUserProfile?: (user: AppUser) => void;
 }) {
   const [createStoryOpen, setCreateStoryOpen] = useState(false);
   const [viewingStory, setViewingStory] = useState<Story | null>(null);
@@ -1959,6 +1976,7 @@ function HomePage({
               onLike={onLike}
               onBookmark={onBookmark}
               onComment={onComment}
+              onOpenUserProfile={onOpenUserProfile}
             />,
           ];
           if ((i + 1) % 3 === 0) {
@@ -1978,12 +1996,17 @@ function HomePage({
 function SearchPage({
   followedUsers,
   setFollowedUsers,
+  stories,
+  onOpenUserProfile,
 }: {
   followedUsers: Set<number>;
   setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+  stories: Story[];
+  onOpenUserProfile?: (user: AppUser) => void;
 }) {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"top" | "people" | "tags">("top");
+  const [viewingStory, setViewingStory] = useState<Story | null>(null);
   // followed state is now managed by App (followedUsers/setFollowedUsers)
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
@@ -2144,6 +2167,13 @@ function SearchPage({
 
   return (
     <div className="flex flex-col gap-4 pb-4" data-ocid="search.page">
+      {viewingStory && (
+        <StoryViewer
+          story={viewingStory}
+          onClose={() => setViewingStory(null)}
+          onSeen={() => setViewingStory(null)}
+        />
+      )}
       <Input
         placeholder="Search people, tags..."
         value={query}
@@ -2318,24 +2348,71 @@ function SearchPage({
                 data-ocid={`search.item.${i + 1}`}
               >
                 <div className="flex items-center gap-3">
-                  <Avatar className="w-10 h-10">
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback>{user.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p
-                      className="text-sm font-semibold"
-                      style={{ color: "var(--app-text)" }}
-                    >
-                      {user.name}
-                    </p>
+                  {(() => {
+                    const userStory = stories.find(
+                      (s) => s.user.id === user.id,
+                    );
+                    return userStory ? (
+                      <button
+                        type="button"
+                        onClick={() => setViewingStory(userStory)}
+                        className="p-0 bg-transparent border-0 cursor-pointer flex-shrink-0"
+                      >
+                        <div
+                          style={{
+                            background:
+                              "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
+                            padding: 2,
+                            borderRadius: "50%",
+                          }}
+                        >
+                          <div className="bg-background rounded-full p-[2px]">
+                            <Avatar className="w-10 h-10">
+                              <AvatarImage src={user.avatar} alt={user.name} />
+                              <AvatarFallback>{user.name[0]}</AvatarFallback>
+                            </Avatar>
+                          </div>
+                        </div>
+                      </button>
+                    ) : (
+                      <Avatar className="w-10 h-10 flex-shrink-0">
+                        <AvatarImage src={user.avatar} alt={user.name} />
+                        <AvatarFallback>{user.name[0]}</AvatarFallback>
+                      </Avatar>
+                    );
+                  })()}
+                  <button
+                    type="button"
+                    className="text-left"
+                    onClick={() => onOpenUserProfile?.(user)}
+                    data-ocid={`search.item.${i + 1}.link`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <p
+                        className="text-sm font-semibold"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {user.name}
+                      </p>
+                      {stories.find((s) => s.user.id === user.id) && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded-full text-white font-medium"
+                          style={{
+                            background:
+                              "linear-gradient(45deg, #f09433, #bc1888)",
+                          }}
+                        >
+                          Story
+                        </span>
+                      )}
+                    </div>
                     <p
                       className="text-xs"
                       style={{ color: "var(--app-text-muted)" }}
                     >
                       @{user.username} · {formatCount(user.followers)} followers
                     </p>
-                  </div>
+                  </button>
                 </div>
                 <Button
                   size="sm"
@@ -3071,12 +3148,14 @@ function NotificationsPage({
   onNewNotif,
   followedUsers,
   setFollowedUsers,
+  onOpenUserProfile,
 }: {
   notifications: Notification[];
   setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
   onNewNotif?: (n: Notification) => void;
   followedUsers: Set<number>;
   setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+  onOpenUserProfile?: (user: AppUser) => void;
 }) {
   const [activeFilter, setActiveFilter] = useState<NotifFilter>("all");
   const [newIds, setNewIds] = useState<Set<number>>(new Set());
@@ -3221,6 +3300,7 @@ function NotificationsPage({
                 isNew={newIds.has(n.id)}
                 followedUsers={followedUsers}
                 setFollowedUsers={setFollowedUsers}
+                onOpenUserProfile={onOpenUserProfile}
               />
             ))}
           </div>
@@ -3245,6 +3325,7 @@ function NotificationsPage({
                 isNew={false}
                 followedUsers={followedUsers}
                 setFollowedUsers={setFollowedUsers}
+                onOpenUserProfile={onOpenUserProfile}
               />
             ))}
           </div>
@@ -3271,12 +3352,14 @@ function NotificationItem({
   isNew = false,
   followedUsers,
   setFollowedUsers,
+  onOpenUserProfile,
 }: {
   notification: Notification;
   index: number;
   isNew?: boolean;
   followedUsers: Set<number>;
   setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+  onOpenUserProfile?: (user: AppUser) => void;
 }) {
   const iconColor =
     n.type === "like"
@@ -3300,7 +3383,12 @@ function NotificationItem({
       }}
       data-ocid={`notifications.item.${index}`}
     >
-      <div className="relative flex-shrink-0">
+      <button
+        type="button"
+        className="relative flex-shrink-0 active:opacity-70 transition-opacity"
+        onClick={() => onOpenUserProfile?.(n.user)}
+        data-ocid={`notifications.item.${index}.link`}
+      >
         <Avatar className="w-11 h-11">
           <AvatarImage src={n.user.avatar} alt={n.user.name} />
           <AvatarFallback>{n.user.name[0]}</AvatarFallback>
@@ -3336,7 +3424,7 @@ function NotificationItem({
             <MessageCircle className="w-3 h-3" style={{ color: iconColor }} />
           )}
         </div>
-      </div>
+      </button>
       <div className="flex-1 min-w-0">
         <p className="text-sm" style={{ color: "var(--app-text)" }}>
           <span className="font-semibold">{n.user.name}</span> {n.text}
@@ -3402,11 +3490,38 @@ const AUTO_REPLIES = [
 ];
 const QUICK_EMOJIS = ["❤️", "😂", "😍", "🔥", "👍", "😭", "🥳", "😮"];
 
-function ChatPage() {
+function ChatPage({
+  initialUserId,
+  onConvOpened,
+}: { initialUserId?: number | null; onConvOpened?: () => void }) {
   const [conversations, setConversations] = useState<Conversation[]>(
     CONVERSATIONS_INITIAL,
   );
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
+
+  // Open conversation when navigated from profile modal
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally run only when initialUserId changes
+  useEffect(() => {
+    if (!initialUserId) return;
+    const existing = conversations.find((c) => c.user.id === initialUserId);
+    if (existing) {
+      setActiveConvId(existing.id);
+    } else {
+      const targetUser = USERS.find((u) => u.id === initialUserId);
+      if (targetUser) {
+        const newConv: Conversation = {
+          id: Date.now(),
+          user: targetUser,
+          unread: 0,
+          lastMessage: "Say hi! 👋",
+          messages: [],
+        };
+        setConversations((prev) => [newConv, ...prev]);
+        setActiveConvId(newConv.id);
+      }
+    }
+    onConvOpened?.();
+  }, [initialUserId]);
   const [newMessage, setNewMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hoveredMsgId, setHoveredMsgId] = useState<number | null>(null);
@@ -3838,6 +3953,10 @@ function ProfilePage({
   const [isPrivate, setIsPrivate] = useState(CURRENT_USER.isPrivate);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
+  const [followersSearch, setFollowersSearch] = useState("");
+  const [followingSearch, setFollowingSearch] = useState("");
+  const [blockedUsers, setBlockedUsers] = useState<Set<number>>(new Set());
+  const [showBlockedModal, setShowBlockedModal] = useState(false);
   const profilePosts = Array.from({ length: 9 }, (_, i) => ({
     id: i + 1,
     image: `https://picsum.photos/seed/profile${i + 1}/300/300`,
@@ -3930,6 +4049,14 @@ function ProfilePage({
             <p className="text-sm mt-1" style={{ color: "var(--app-text)" }}>
               {profile.name}
             </p>
+            {profile.bio && (
+              <p
+                className="text-[10px] font-semibold uppercase tracking-wider mt-2"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                Description
+              </p>
+            )}
             <p
               className="text-sm mt-1"
               style={{ color: "var(--app-text-muted)" }}
@@ -4041,40 +4168,110 @@ function ProfilePage({
                 <DialogHeader>
                   <DialogTitle>Followers</DialogTitle>
                 </DialogHeader>
-                <div className="flex flex-col gap-3 max-h-80 overflow-y-auto">
-                  {USERS.slice(0, 6).map((u) => (
-                    <div key={u.id} className="flex items-center gap-3">
-                      <Avatar className="w-10 h-10">
-                        <AvatarImage src={u.avatar} alt={u.name} />
-                        <AvatarFallback>{u.name[0]}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className="text-sm font-semibold truncate"
-                          style={{ color: "var(--app-text)" }}
+                <div className="relative mb-1">
+                  <input
+                    type="text"
+                    placeholder="Search followers..."
+                    value={followersSearch}
+                    onChange={(e) => setFollowersSearch(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/30"
+                    style={{ color: "var(--app-text)" }}
+                  />
+                  <svg
+                    aria-label="Search"
+                    role="img"
+                    className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <title>Search</title>
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                  </svg>
+                </div>
+                <div className="flex flex-col gap-3 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
+                  {USERS.slice(0, 6)
+                    .filter(
+                      (u) =>
+                        !blockedUsers.has(u.id) &&
+                        (followersSearch === "" ||
+                          u.name
+                            .toLowerCase()
+                            .includes(followersSearch.toLowerCase()) ||
+                          u.username
+                            .toLowerCase()
+                            .includes(followersSearch.toLowerCase())),
+                    )
+                    .map((u) => (
+                      <div key={u.id} className="flex items-center gap-3">
+                        <Avatar className="w-10 h-10">
+                          <AvatarImage src={u.avatar} alt={u.name} />
+                          <AvatarFallback>{u.name[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className="text-sm font-semibold truncate"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {u.name}
+                          </p>
+                          <p
+                            className="text-xs truncate"
+                            style={{ color: "var(--app-text-muted)" }}
+                          >
+                            @{u.username}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={
+                            followedUsers.has(u.id) ? "outline" : "default"
+                          }
+                          className="text-xs h-7 px-3"
+                          onClick={() => onToggleFollow(u.id)}
+                          data-ocid="profile.followers.toggle"
                         >
-                          {u.name}
-                        </p>
-                        <p
-                          className="text-xs truncate"
-                          style={{ color: "var(--app-text-muted)" }}
-                        >
-                          @{u.username}
-                        </p>
+                          {followedUsers.has(u.id) ? "Following" : "Follow"}
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-muted"
+                              data-ocid="profile.followers.dropdown_menu"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-destructive cursor-pointer"
+                              onClick={() => {
+                                setBlockedUsers(
+                                  (prev) => new Set([...prev, u.id]),
+                                );
+                                toast.error(
+                                  `@${u.username} को block कर दिया गया`,
+                                );
+                              }}
+                            >
+                              🚫 Block
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={() => {
+                                toast(`@${u.username} की रिपोर्ट भेज दी गई`, {
+                                  description: "हमारी team 24 घंटे में review करेगी",
+                                });
+                              }}
+                            >
+                              🚩 Report
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
-                      <Button
-                        size="sm"
-                        variant={
-                          followedUsers.has(u.id) ? "outline" : "default"
-                        }
-                        className="text-xs h-7 px-3"
-                        onClick={() => onToggleFollow(u.id)}
-                        data-ocid="profile.followers.toggle"
-                      >
-                        {followedUsers.has(u.id) ? "Following" : "Follow"}
-                      </Button>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               </DialogContent>
             </Dialog>
@@ -4090,8 +4287,40 @@ function ProfilePage({
                 <DialogHeader>
                   <DialogTitle>Following</DialogTitle>
                 </DialogHeader>
-                <div className="flex flex-col gap-3 max-h-80 overflow-y-auto">
-                  {USERS.filter((u) => followedUsers.has(u.id)).length === 0 ? (
+                <div className="relative mb-1">
+                  <input
+                    type="text"
+                    placeholder="Search following..."
+                    value={followingSearch}
+                    onChange={(e) => setFollowingSearch(e.target.value)}
+                    className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none focus:ring-2 focus:ring-primary/30"
+                    style={{ color: "var(--app-text)" }}
+                  />
+                  <svg
+                    aria-label="Search"
+                    role="img"
+                    className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <title>Search</title>
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                  </svg>
+                </div>
+                <div className="flex flex-col gap-3 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
+                  {USERS.filter(
+                    (u) =>
+                      followedUsers.has(u.id) &&
+                      (followingSearch === "" ||
+                        u.name
+                          .toLowerCase()
+                          .includes(followingSearch.toLowerCase()) ||
+                        u.username
+                          .toLowerCase()
+                          .includes(followingSearch.toLowerCase())),
+                  ).length === 0 ? (
                     <p
                       className="text-sm text-center py-4"
                       style={{ color: "var(--app-text-muted)" }}
@@ -4099,7 +4328,18 @@ function ProfilePage({
                       You are not following anyone yet.
                     </p>
                   ) : (
-                    USERS.filter((u) => followedUsers.has(u.id)).map((u) => (
+                    USERS.filter(
+                      (u) =>
+                        followedUsers.has(u.id) &&
+                        !blockedUsers.has(u.id) &&
+                        (followingSearch === "" ||
+                          u.name
+                            .toLowerCase()
+                            .includes(followingSearch.toLowerCase()) ||
+                          u.username
+                            .toLowerCase()
+                            .includes(followingSearch.toLowerCase())),
+                    ).map((u) => (
                       <div key={u.id} className="flex items-center gap-3">
                         <Avatar className="w-10 h-10">
                           <AvatarImage src={u.avatar} alt={u.name} />
@@ -4128,6 +4368,42 @@ function ProfilePage({
                         >
                           Unfollow
                         </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-1 rounded hover:bg-muted"
+                              data-ocid="profile.following.dropdown_menu"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-destructive cursor-pointer"
+                              onClick={() => {
+                                setBlockedUsers(
+                                  (prev) => new Set([...prev, u.id]),
+                                );
+                                toast.error(
+                                  `@${u.username} को block कर दिया गया`,
+                                );
+                              }}
+                            >
+                              🚫 Block
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="cursor-pointer"
+                              onClick={() => {
+                                toast(`@${u.username} की रिपोर्ट भेज दी गई`, {
+                                  description: "हमारी team 24 घंटे में review करेगी",
+                                });
+                              }}
+                            >
+                              🚩 Report
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     ))
                   )}
@@ -4156,6 +4432,92 @@ function ProfilePage({
             data-ocid="profile.switch"
           />
         </div>
+
+        {/* Blocked Accounts */}
+        <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+          <div>
+            <p
+              className="text-sm font-semibold"
+              style={{ color: "var(--app-text)" }}
+            >
+              Blocked Accounts
+            </p>
+            <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
+              {blockedUsers.size} account{blockedUsers.size !== 1 ? "s" : ""}{" "}
+              blocked
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs h-7 px-3"
+            onClick={() => setShowBlockedModal(true)}
+            data-ocid="profile.blocked.button"
+          >
+            Manage
+          </Button>
+        </div>
+
+        {/* Blocked Accounts Dialog */}
+        <Dialog open={showBlockedModal} onOpenChange={setShowBlockedModal}>
+          <DialogContent
+            className="max-w-sm"
+            data-ocid="profile.blocked.dialog"
+          >
+            <DialogHeader>
+              <DialogTitle>Blocked Accounts</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3 max-h-80 overflow-y-auto">
+              {USERS.filter((u) => blockedUsers.has(u.id)).length === 0 ? (
+                <p
+                  className="text-sm text-center py-4"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  कोई blocked account नहीं है।
+                </p>
+              ) : (
+                USERS.filter((u) => blockedUsers.has(u.id)).map((u) => (
+                  <div key={u.id} className="flex items-center gap-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={u.avatar} alt={u.name} />
+                      <AvatarFallback>{u.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className="text-sm font-semibold truncate"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {u.name}
+                      </p>
+                      <p
+                        className="text-xs truncate"
+                        style={{ color: "var(--app-text-muted)" }}
+                      >
+                        @{u.username}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 px-3"
+                      onClick={() => {
+                        setBlockedUsers((prev) => {
+                          const next = new Set(prev);
+                          next.delete(u.id);
+                          return next;
+                        });
+                        toast.success(`@${u.username} को unblock कर दिया`);
+                      }}
+                      data-ocid="profile.blocked.button"
+                    >
+                      Unblock
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Posts Grid */}
@@ -4325,7 +4687,7 @@ function BottomNav({
     { id: "search" as Page, icon: <Search className="w-6 h-6" /> },
     { id: "notifications" as Page, icon: <Bell className="w-6 h-6" /> },
     { id: "profile" as Page, icon: <UserIcon className="w-6 h-6" /> },
-    { id: "ai" as Page, icon: <Sparkles className="w-6 h-6" /> },
+    { id: "reels" as Page, icon: <Play className="w-6 h-6" /> },
   ];
 
   return (
@@ -4816,7 +5178,7 @@ function AIStudioPage() {
             value={captionInput}
             onChange={(e) => setCaptionInput(e.target.value)}
             placeholder="यहाँ अपना caption लिखें या paste करें..."
-            rows={3}
+            rows={4}
             className="resize-none rounded-xl border text-sm"
             style={{
               backgroundColor: "var(--app-bg)",
@@ -5571,7 +5933,7 @@ function CreatePostDialog({
               placeholder="अपनी post के बारे में लिखें..."
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              rows={3}
+              rows={4}
               style={{
                 backgroundColor: "var(--app-input)",
                 borderColor: "var(--app-border)",
@@ -5661,6 +6023,505 @@ function CreatePostDialog({
   );
 }
 
+// ─── USER PROFILE MODAL ────────────────────────────────────────────────────────
+
+function UserProfileModal({
+  user,
+  posts,
+  stories,
+  followedUsers,
+  onToggleFollow,
+  onClose,
+  onOpenStory,
+  onMessage,
+}: {
+  user: AppUser;
+  posts: Post[];
+  stories: Story[];
+  followedUsers: Set<number>;
+  onToggleFollow: (id: number) => void;
+  onClose: () => void;
+  onOpenStory: (story: Story) => void;
+  onMessage?: (userId: number) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<"posts" | "reels">("posts");
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [commentInput, setCommentInput] = useState("");
+  const [localLiked, setLocalLiked] = useState<Set<number>>(new Set());
+
+  const userPosts = posts.filter(
+    (p) => p.user.id === user.id && (!p.type || p.type === "image"),
+  );
+  const userReels = posts.filter(
+    (p) => p.user.id === user.id && p.type === "reel",
+  );
+  const displayedPosts = activeTab === "posts" ? userPosts : userReels;
+
+  const userStory = stories.find(
+    (s) => s.user.id === user.id && !s.isCurrentUser,
+  );
+  const isFollowing = followedUsers.has(user.id);
+
+  function handleLikePost(postId: number) {
+    setLocalLiked((prev) => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex flex-col"
+      style={{ backgroundColor: "var(--app-bg)" }}
+      data-ocid="user_profile_modal"
+    >
+      {/* Header bar */}
+      <div
+        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
+        style={{
+          backgroundColor: "var(--app-card)",
+          borderColor: "var(--app-border)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex items-center gap-2 active:opacity-70 transition-opacity"
+          style={{ color: "var(--app-text)" }}
+          data-ocid="user_profile_modal.back_button"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="text-sm font-medium">Back</span>
+        </button>
+        <p
+          className="text-sm font-semibold"
+          style={{ color: "var(--app-text)" }}
+        >
+          @{user.username}
+        </p>
+        <div className="w-16" />
+      </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Profile header */}
+        <div
+          className="px-4 pt-5 pb-4"
+          style={{ backgroundColor: "var(--app-card)" }}
+        >
+          <div className="flex items-start gap-4 mb-4">
+            {/* Avatar with story ring */}
+            <button
+              type="button"
+              onClick={() => userStory && onOpenStory(userStory)}
+              className={userStory ? "cursor-pointer" : "cursor-default"}
+            >
+              {userStory ? (
+                <div
+                  style={{
+                    background:
+                      "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
+                    padding: 2.5,
+                    borderRadius: "50%",
+                  }}
+                >
+                  <div className="bg-background rounded-full p-[2px]">
+                    <Avatar className="w-20 h-20">
+                      <AvatarImage src={user.avatar} alt={user.name} />
+                      <AvatarFallback className="text-xl">
+                        {user.name[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                </div>
+              ) : (
+                <Avatar className="w-20 h-20">
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback className="text-xl">
+                    {user.name[0]}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+            </button>
+
+            {/* Stats */}
+            <div className="flex-1 pt-2">
+              <div className="flex justify-around mb-3">
+                <div className="flex flex-col items-center">
+                  <span
+                    className="text-base font-bold"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {formatCount(user.posts)}
+                  </span>
+                  <span
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Posts
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span
+                    className="text-base font-bold"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {formatCount(user.followers)}
+                  </span>
+                  <span
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Followers
+                  </span>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span
+                    className="text-base font-bold"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {formatCount(user.following)}
+                  </span>
+                  <span
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Following
+                  </span>
+                </div>
+              </div>
+
+              {/* Follow + Message buttons */}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 rounded-lg text-sm font-semibold h-9"
+                  style={{
+                    backgroundColor: isFollowing
+                      ? "var(--app-card)"
+                      : "var(--app-accent)",
+                    color: isFollowing ? "var(--app-text)" : "#fff",
+                    border: isFollowing
+                      ? "1px solid var(--app-border)"
+                      : "none",
+                  }}
+                  onClick={() => onToggleFollow(user.id)}
+                  data-ocid="user_profile_modal.toggle"
+                >
+                  {isFollowing ? "Following" : "Follow"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 rounded-lg text-sm font-semibold h-9 gap-1.5"
+                  style={{
+                    borderColor: "var(--app-border)",
+                    color: "var(--app-text)",
+                  }}
+                  onClick={() => onMessage?.(user.id)}
+                  data-ocid="user_profile_modal.message_button"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Message
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Name + bio */}
+          <div>
+            <p
+              className="text-sm font-bold"
+              style={{ color: "var(--app-text)" }}
+            >
+              {user.name}
+            </p>
+            {user.bio && (
+              <p
+                className="text-sm mt-0.5 leading-relaxed"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                {user.bio}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div
+          className="flex border-b sticky top-0 z-10"
+          style={{
+            backgroundColor: "var(--app-card)",
+            borderColor: "var(--app-border)",
+          }}
+        >
+          {(["posts", "reels"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className="flex-1 py-3 text-sm font-medium transition-colors"
+              style={{
+                color:
+                  activeTab === tab
+                    ? "var(--app-accent)"
+                    : "var(--app-text-muted)",
+                borderBottom:
+                  activeTab === tab
+                    ? "2px solid var(--app-accent)"
+                    : "2px solid transparent",
+              }}
+              data-ocid={`user_profile_modal.${tab}.tab`}
+            >
+              {tab === "posts" ? "📷 Posts" : "🎬 Reels"}
+            </button>
+          ))}
+        </div>
+
+        {/* Grid */}
+        {displayedPosts.length === 0 ? (
+          <div
+            className="flex flex-col items-center justify-center py-16 gap-3"
+            style={{ color: "var(--app-text-muted)" }}
+            data-ocid="user_profile_modal.empty_state"
+          >
+            {activeTab === "posts" ? (
+              <Camera className="w-12 h-12 opacity-30" />
+            ) : (
+              <Play className="w-12 h-12 opacity-30" />
+            )}
+            <p className="text-sm">No {activeTab} yet</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-0.5 p-0.5">
+            {displayedPosts.map((post, idx) => (
+              <button
+                key={post.id}
+                type="button"
+                onClick={() => setSelectedPost(post)}
+                className="relative aspect-square overflow-hidden active:opacity-80 transition-opacity"
+                data-ocid={`user_profile_modal.post.${idx + 1}`}
+              >
+                {post.type === "reel" && post.videoUrl ? (
+                  <video
+                    src={post.videoUrl}
+                    className="w-full h-full object-cover"
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={post.image}
+                    alt={post.caption}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                )}
+                <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors duration-150 flex items-center justify-center">
+                  <div className="opacity-0 hover:opacity-100 transition-opacity flex items-center gap-3 text-white">
+                    <span className="flex items-center gap-1 text-xs font-semibold">
+                      <Heart className="w-4 h-4 fill-white" />{" "}
+                      {formatCount(post.likes)}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs font-semibold">
+                      <MessageCircle className="w-4 h-4 fill-white" />{" "}
+                      {post.comments}
+                    </span>
+                  </div>
+                </div>
+                {post.type === "reel" && (
+                  <div className="absolute top-1.5 right-1.5">
+                    <Play className="w-3.5 h-3.5 fill-white text-white" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Post detail dialog */}
+      {selectedPost && (
+        <div
+          className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center"
+          style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedPost(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setSelectedPost(null);
+          }}
+        >
+          <div
+            className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
+            style={{ backgroundColor: "var(--app-card)", maxHeight: "90vh" }}
+          >
+            {/* Close bar */}
+            <div
+              className="flex items-center justify-between px-4 py-3 border-b"
+              style={{ borderColor: "var(--app-border)" }}
+            >
+              <div className="flex items-center gap-2">
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarFallback>{user.name[0]}</AvatarFallback>
+                </Avatar>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {user.username}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPost(null)}
+                className="p-1 rounded-full hover:bg-muted"
+                style={{ color: "var(--app-text-muted)" }}
+                data-ocid="user_profile_modal.close_button"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Image/video */}
+            <div className="aspect-square w-full overflow-hidden bg-black">
+              {selectedPost.type === "reel" && selectedPost.videoUrl ? (
+                <video
+                  src={selectedPost.videoUrl}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <img
+                  src={selectedPost.image}
+                  alt={selectedPost.caption}
+                  className="w-full h-full object-cover"
+                />
+              )}
+            </div>
+            {/* Actions */}
+            <div
+              className="px-4 py-3 overflow-y-auto"
+              style={{ maxHeight: "40vh" }}
+            >
+              <div className="flex items-center gap-4 mb-2">
+                <button
+                  type="button"
+                  onClick={() => handleLikePost(selectedPost.id)}
+                  className="flex items-center gap-1.5 active:scale-90 transition-transform"
+                >
+                  <Heart
+                    className="w-6 h-6 transition-colors"
+                    style={{
+                      color:
+                        localLiked.has(selectedPost.id) || selectedPost.isLiked
+                          ? "#E53935"
+                          : "var(--app-text-muted)",
+                      fill:
+                        localLiked.has(selectedPost.id) || selectedPost.isLiked
+                          ? "#E53935"
+                          : "none",
+                    }}
+                  />
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {formatCount(
+                      selectedPost.likes +
+                        (localLiked.has(selectedPost.id) ? 1 : 0),
+                    )}
+                  </span>
+                </button>
+                <button type="button" className="flex items-center gap-1.5">
+                  <MessageCircle
+                    className="w-6 h-6"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {selectedPost.comments}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="ml-auto"
+                  onClick={() => toast.success("Post shared! 📤")}
+                >
+                  <Share2
+                    className="w-6 h-6"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+              </div>
+              <p className="text-sm mb-1" style={{ color: "var(--app-text)" }}>
+                <span className="font-semibold mr-1">{user.username}</span>
+                {selectedPost.caption}
+              </p>
+              {(selectedPost.commentList ?? []).slice(0, 3).map((c) => (
+                <p
+                  key={c.id}
+                  className="text-sm mb-0.5"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  <span
+                    className="font-semibold mr-1"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {c.username}
+                  </span>
+                  {c.text}
+                </p>
+              ))}
+              <div
+                className="flex gap-2 mt-3 border-t pt-3"
+                style={{ borderColor: "var(--app-border)" }}
+              >
+                <input
+                  type="text"
+                  placeholder="Add a comment..."
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && commentInput.trim()) {
+                      toast.success("Comment added!");
+                      setCommentInput("");
+                    }
+                  }}
+                  className="flex-1 text-sm bg-transparent outline-none"
+                  style={{ color: "var(--app-text)" }}
+                  data-ocid="user_profile_modal.input"
+                />
+                {commentInput.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.success("Comment added!");
+                      setCommentInput("");
+                    }}
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--app-accent)" }}
+                    data-ocid="user_profile_modal.submit_button"
+                  >
+                    Post
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState<Page>("home");
   const [darkMode, setDarkMode] = useState(true);
@@ -5670,12 +6531,22 @@ export default function App() {
   const [posts, setPosts] = useState<Post[]>(POSTS_INITIAL);
   const { profile, updateProfile } = useProfile();
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [chatInitUserId, setChatInitUserId] = useState<number | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
   const [stories, setStories] = useState<Story[]>(STORIES_INITIAL);
   const [notifications, setNotifications] =
     useState<Notification[]>(NOTIFICATIONS);
   const [toastNotif, setToastNotif] = useState<Notification | null>(null);
   const [showToast, setShowToast] = useState(false);
+  const [viewingUser, setViewingUser] = useState<AppUser | null>(null);
+
+  function handleOpenUserProfile(user: AppUser) {
+    if (user.username === profile.username || user.id === CURRENT_USER.id) {
+      setActivePage("profile");
+      return;
+    }
+    setViewingUser(user);
+  }
 
   function handleAddStory(data: {
     image?: string;
@@ -5787,6 +6658,7 @@ export default function App() {
             stories={stories}
             onAddStory={handleAddStory}
             followedUsers={followedUsers}
+            onOpenUserProfile={handleOpenUserProfile}
           />
         );
       case "search":
@@ -5794,6 +6666,8 @@ export default function App() {
           <SearchPage
             followedUsers={followedUsers}
             setFollowedUsers={setFollowedUsers}
+            stories={stories}
+            onOpenUserProfile={handleOpenUserProfile}
           />
         );
       case "reels":
@@ -5809,10 +6683,16 @@ export default function App() {
             }}
             followedUsers={followedUsers}
             setFollowedUsers={setFollowedUsers}
+            onOpenUserProfile={handleOpenUserProfile}
           />
         );
       case "chat":
-        return <ChatPage />;
+        return (
+          <ChatPage
+            initialUserId={chatInitUserId}
+            onConvOpened={() => setChatInitUserId(null)}
+          />
+        );
       case "profile":
         return (
           <ProfilePage
@@ -5963,6 +6843,31 @@ export default function App() {
         profile={profile}
         onSave={updateProfile}
       />
+      {viewingUser && (
+        <UserProfileModal
+          user={viewingUser}
+          posts={posts}
+          stories={stories}
+          followedUsers={followedUsers}
+          onToggleFollow={(id) =>
+            setFollowedUsers((prev) => {
+              const next = new Set(prev);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            })
+          }
+          onClose={() => setViewingUser(null)}
+          onOpenStory={(_story) => {
+            setViewingUser(null);
+          }}
+          onMessage={(userId) => {
+            setViewingUser(null);
+            setChatInitUserId(userId);
+            setActivePage("chat");
+          }}
+        />
+      )}
       {/* Real-time Notification Toast */}
       {showToast && activePage !== "notifications" && toastNotif && (
         <div
