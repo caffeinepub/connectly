@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Flag,
   Hash,
   Heart,
   Home,
@@ -48,6 +50,8 @@ import {
   Smile,
   Sparkles,
   Sun,
+  ThumbsDown,
+  ThumbsUp,
   User as UserIcon,
   Volume2,
   VolumeX,
@@ -1513,12 +1517,16 @@ function PostCard({
   onBookmark,
   onComment,
   onOpenUserProfile,
+  onNotInterested,
+  onReported,
 }: {
   post: Post;
   onLike: (id: number) => void;
   onBookmark: (id: number) => void;
   onComment: (id: number, text: string) => void;
   onOpenUserProfile?: (user: AppUser) => void;
+  onNotInterested?: (id: number) => void;
+  onReported?: (id: number) => void;
 }) {
   const [likeScale, setLikeScale] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -1530,6 +1538,10 @@ function PostCard({
   const [expandedReplies, setExpandedReplies] = useState<
     Record<number, boolean>
   >({});
+  const [postInterest, setPostInterest] = useState<
+    "interested" | "not_interested" | null
+  >(null);
+  const [postReported, setPostReported] = useState(false);
 
   function handleLike() {
     setLikeScale(true);
@@ -1611,14 +1623,74 @@ function PostCard({
             </p>
           </div>
         </button>
-        <button
-          type="button"
-          className="p-1 rounded-full hover:bg-muted active:scale-95 transition-transform duration-150"
-          style={{ color: "var(--app-text-muted)" }}
-          data-ocid={`feed.item.${post.id}.button`}
-        >
-          <MoreHorizontal className="w-5 h-5" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="p-1 rounded-full hover:bg-muted active:scale-95 transition-transform duration-150"
+              style={{ color: "var(--app-text-muted)" }}
+              data-ocid={`feed.item.${post.id}.button`}
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              onClick={() => {
+                setPostInterest("interested");
+                toast.success("👍 इस post में interest mark किया");
+              }}
+              className={
+                postInterest === "interested"
+                  ? "text-green-500 font-semibold"
+                  : ""
+              }
+            >
+              <ThumbsUp className="w-4 h-4 mr-2" />
+              Interested
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setPostInterest("not_interested");
+                toast("👎 इस तरह के posts कम दिखाए जाएंगे");
+                setTimeout(() => onNotInterested?.(post.id), 500);
+              }}
+              className={
+                postInterest === "not_interested"
+                  ? "text-red-500 font-semibold"
+                  : ""
+              }
+            >
+              <ThumbsDown className="w-4 h-4 mr-2" />
+              Not Interested
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                if (!postReported) {
+                  setPostReported(true);
+                  toast("🚩 Report submit हो गया, हम इसे review करेंगे।");
+                  setTimeout(() => onReported?.(post.id), 500);
+                }
+              }}
+              className={
+                postReported ? "text-red-500 font-semibold" : "text-red-400"
+              }
+            >
+              {postReported ? (
+                <span className="flex items-center">
+                  <Check className="w-4 h-4 mr-2" />
+                  Reported
+                </span>
+              ) : (
+                <span className="flex items-center">
+                  <Flag className="w-4 h-4 mr-2" />
+                  Report
+                </span>
+              )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {/* Media: image or video */}
       {post.type === "reel" && post.videoUrl ? (
@@ -1911,6 +1983,12 @@ function HomePage({
 }) {
   const [createStoryOpen, setCreateStoryOpen] = useState(false);
   const [viewingStory, setViewingStory] = useState<Story | null>(null);
+  const [hiddenPosts, setHiddenPosts] = useState<
+    Map<number, "not_interested" | "reported">
+  >(new Map());
+  const [hiddenSectionOpen, setHiddenSectionOpen] = useState(false);
+  const hiddenPostIds = new Set(hiddenPosts.keys());
+  const visiblePosts = posts.filter((p) => !hiddenPostIds.has(p.id));
 
   const visibleStories = stories.filter((s) => {
     if (s.isCurrentUser) return true;
@@ -1969,7 +2047,7 @@ function HomePage({
 
       {/* Feed */}
       <div className="flex flex-col" data-ocid="feed.list">
-        {posts.flatMap((post, i) => {
+        {visiblePosts.flatMap((post, i) => {
           const cards = [
             <PostCard
               key={post.id}
@@ -1978,6 +2056,14 @@ function HomePage({
               onBookmark={onBookmark}
               onComment={onComment}
               onOpenUserProfile={onOpenUserProfile}
+              onNotInterested={(id) =>
+                setHiddenPosts(
+                  (prev) => new Map([...prev, [id, "not_interested"]]),
+                )
+              }
+              onReported={(id) =>
+                setHiddenPosts((prev) => new Map([...prev, [id, "reported"]]))
+              }
             />,
           ];
           if ((i + 1) % 3 === 0) {
@@ -1988,6 +2074,112 @@ function HomePage({
           return cards;
         })}
       </div>
+
+      {/* Hidden Posts Section */}
+      {hiddenPosts.size > 0 && (
+        <div
+          className="mx-0 mt-2 rounded-none border-t"
+          style={{ borderColor: "var(--app-border)" }}
+          data-ocid="hidden_posts.panel"
+        >
+          <button
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
+            style={{ color: "var(--app-text-muted)" }}
+            onClick={() => setHiddenSectionOpen((v) => !v)}
+            type="button"
+            data-ocid="hidden_posts.toggle"
+          >
+            <span>🙈 Hidden Posts ({hiddenPosts.size})</span>
+            <span>{hiddenSectionOpen ? "▲" : "▼"}</span>
+          </button>
+          {hiddenSectionOpen && (
+            <div
+              className="flex flex-col divide-y"
+              style={{ borderColor: "var(--app-border)" }}
+            >
+              {posts
+                .filter((p) => hiddenPostIds.has(p.id))
+                .map((post) => {
+                  const reason = hiddenPosts.get(post.id);
+                  return (
+                    <div
+                      key={post.id}
+                      className="flex items-center gap-3 px-4 py-3"
+                      style={{ backgroundColor: "var(--app-card)" }}
+                      data-ocid={`hidden_posts.item.${post.id}`}
+                    >
+                      <img
+                        src={post.user.avatar}
+                        alt={post.user.name}
+                        className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-sm font-semibold truncate"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {post.user.name}
+                          </span>
+                          <span
+                            className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
+                            style={{
+                              backgroundColor:
+                                reason === "reported"
+                                  ? "oklch(0.92 0.05 25)"
+                                  : "oklch(0.93 0.02 240)",
+                              color:
+                                reason === "reported"
+                                  ? "oklch(0.45 0.15 25)"
+                                  : "oklch(0.45 0.05 240)",
+                            }}
+                          >
+                            {reason === "reported"
+                              ? "Reported"
+                              : "Not Interested"}
+                          </span>
+                        </div>
+                        {post.caption && (
+                          <p
+                            className="text-xs truncate"
+                            style={{ color: "var(--app-text-muted)" }}
+                          >
+                            {post.caption}
+                          </p>
+                        )}
+                      </div>
+                      {post.image && (
+                        <img
+                          src={post.image}
+                          alt=""
+                          className="h-10 w-10 rounded object-cover flex-shrink-0"
+                        />
+                      )}
+                      <button
+                        className="flex-shrink-0 rounded border px-2.5 py-1 text-xs font-medium"
+                        style={{
+                          borderColor: "var(--app-border)",
+                          color: "var(--app-text)",
+                        }}
+                        onClick={() =>
+                          setHiddenPosts((prev) => {
+                            const next = new Map(prev);
+                            next.delete(post.id);
+                            return next;
+                          })
+                        }
+                        type="button"
+                        data-ocid="hidden_posts.restore_button"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -4042,16 +4234,49 @@ function ProfilePage({
   const [followingSearch, setFollowingSearch] = useState("");
   const [blockedUsers, setBlockedUsers] = useState<Set<number>>(new Set());
   const [showBlockedModal, setShowBlockedModal] = useState(false);
-  const [profileActiveTab, setProfileActiveTab] = useState<"posts" | "saved">(
-    "posts",
+  const [profileActiveTab, setProfileActiveTab] = useState<
+    "posts" | "saved" | "tagged"
+  >("posts");
+  const [selectedTaggedPost, setSelectedTaggedPost] = useState<{
+    id: number;
+    image: string;
+  } | null>(null);
+  const [selectedProfilePost, setSelectedProfilePost] = useState<{
+    id: number;
+    image: string;
+    caption?: string;
+  } | null>(null);
+  const [profilePostLiked, setProfilePostLiked] = useState<Set<number>>(
+    new Set(),
   );
+  const [profilePostCommentInput, setProfilePostCommentInput] = useState("");
+  const [profilePostComments, setProfilePostComments] = useState<
+    Record<number, string[]>
+  >({});
+  const [taggedLiked, setTaggedLiked] = useState<Set<number>>(new Set());
+  const [taggedCommentInput, setTaggedCommentInput] = useState("");
+  const [taggedComments, setTaggedComments] = useState<
+    Record<number, string[]>
+  >({});
   const savedReelIds: number[] = JSON.parse(
     localStorage.getItem("connectly_saved_reels") || "[]",
   );
   const savedReelsList = REELS.filter((r) => savedReelIds.includes(r.id));
+  const PROFILE_CAPTIONS = [
+    "Golden hour magic ✨",
+    "Good vibes only 🌈",
+    "Living my best life 💫",
+    "Exploring new horizons 🌍",
+    "Chasing sunsets 🌅",
+    "Coffee and good books ☕📚",
+    "Weekend adventures 🏞️",
+    "Music is life 🎵",
+    "Stay positive 🌸",
+  ];
   const profilePosts = Array.from({ length: 9 }, (_, i) => ({
     id: i + 1,
     image: `https://picsum.photos/seed/profile${i + 1}/300/300`,
+    caption: PROFILE_CAPTIONS[i],
   }));
 
   return (
@@ -4618,7 +4843,7 @@ function ProfilePage({
           className="flex border-b mb-3"
           style={{ borderColor: "var(--app-border)" }}
         >
-          {(["posts", "saved"] as const).map((tab) => (
+          {(["posts", "saved", "tagged"] as const).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -4636,7 +4861,11 @@ function ProfilePage({
               }}
               data-ocid={`profile.${tab}.tab`}
             >
-              {tab === "posts" ? "📷 Posts" : "🔖 Saved"}
+              {tab === "posts"
+                ? "📷 Posts"
+                : tab === "saved"
+                  ? "🔖 Saved"
+                  : "🏷️ Tagged"}
             </button>
           ))}
         </div>
@@ -4649,63 +4878,429 @@ function ProfilePage({
                 key={post.id}
                 className="relative aspect-square overflow-hidden rounded-lg group"
                 data-ocid={`profile.item.${i + 1}`}
+                onClick={() => setSelectedProfilePost(post)}
               >
                 <img
                   src={post.image}
                   alt="post"
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
                 />
+                {post.caption && (
+                  <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                    <p className="text-white text-[10px] leading-tight line-clamp-2 text-left">
+                      {post.caption}
+                    </p>
+                  </div>
+                )}
               </button>
             ))}
           </div>
-        ) : savedReelsList.length === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center py-16 gap-3"
-            style={{ color: "var(--app-text-muted)" }}
-            data-ocid="profile.saved.empty"
-          >
-            <Bookmark className="w-12 h-12 opacity-30" />
-            <p className="text-sm">कोई saved reel नहीं</p>
-            <p className="text-xs opacity-60">Reels में 🔖 tap करके save करें</p>
-          </div>
+        ) : profileActiveTab === "saved" ? (
+          savedReelsList.length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center py-16 gap-3"
+              style={{ color: "var(--app-text-muted)" }}
+              data-ocid="profile.saved.empty"
+            >
+              <Bookmark className="w-12 h-12 opacity-30" />
+              <p className="text-sm">कोई saved reel नहीं</p>
+              <p className="text-xs opacity-60">Reels में 🔖 tap करके save करें</p>
+            </div>
+          ) : (
+            <div
+              className="grid grid-cols-3 gap-1"
+              data-ocid="profile.saved.list"
+            >
+              {savedReelsList.map((reel, i) => (
+                <div
+                  key={reel.id}
+                  className="relative aspect-square overflow-hidden rounded-lg group bg-black"
+                  data-ocid={`profile.saved.item.${i + 1}`}
+                >
+                  {reel.videoUrl ? (
+                    <video
+                      src={reel.videoUrl}
+                      className="w-full h-full object-cover opacity-80"
+                      muted
+                      playsInline
+                    />
+                  ) : (
+                    <img
+                      src={reel.image}
+                      alt={reel.caption}
+                      className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
+                    />
+                  )}
+                  <div className="absolute top-1.5 right-1.5">
+                    <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
+                    <p className="text-white text-[10px] leading-tight line-clamp-1">
+                      {reel.caption}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         ) : (
           <div
             className="grid grid-cols-3 gap-1"
-            data-ocid="profile.saved.list"
+            data-ocid="profile.tagged.list"
           >
-            {savedReelsList.map((reel, i) => (
-              <div
-                key={reel.id}
-                className="relative aspect-square overflow-hidden rounded-lg group bg-black"
-                data-ocid={`profile.saved.item.${i + 1}`}
+            {Array.from({ length: 6 }, (_, i) => ({
+              id: i + 1,
+              image: `https://picsum.photos/seed/tagged${i + 1}/300/300`,
+            })).map((post, i) => (
+              <button
+                type="button"
+                key={post.id}
+                className="relative aspect-square overflow-hidden rounded-lg group"
+                data-ocid={`profile.tagged.item.${i + 1}`}
+                onClick={() => setSelectedTaggedPost(post)}
               >
-                {reel.videoUrl ? (
-                  <video
-                    src={reel.videoUrl}
-                    className="w-full h-full object-cover opacity-80"
-                    muted
-                    playsInline
-                  />
-                ) : (
-                  <img
-                    src={reel.image}
-                    alt={reel.caption}
-                    className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
-                  />
-                )}
-                <div className="absolute top-1.5 right-1.5">
-                  <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                <img
+                  src={post.image}
+                  alt="tagged post"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                />
+                <div className="absolute top-1.5 right-1.5 bg-black/50 rounded-full p-0.5">
+                  <span className="text-[10px]">🏷️</span>
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
-                  <p className="text-white text-[10px] leading-tight line-clamp-1">
-                    {reel.caption}
-                  </p>
-                </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </div>
+      {selectedProfilePost && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          data-ocid="profile.post.modal"
+        >
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute inset-0 w-full h-full cursor-default"
+            onClick={() => setSelectedProfilePost(null)}
+          />
+          <div
+            className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xl z-10"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Avatar className="w-7 h-7">
+                  <AvatarImage src={profile.avatar} alt={profile.name} />
+                  <AvatarFallback>{profile.name[0]}</AvatarFallback>
+                </Avatar>
+                <span className="font-semibold text-sm">
+                  {profile.username}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setSelectedProfilePost(null)}
+                data-ocid="profile.post.close_button"
+              >
+                ✕
+              </button>
+            </div>
+            <img
+              src={selectedProfilePost.image}
+              alt="post"
+              className="w-full aspect-square object-cover"
+            />
+            {selectedProfilePost.caption && (
+              <div className="px-4 py-2 border-b border-border">
+                <p className="text-sm" style={{ color: "var(--app-text)" }}>
+                  <span className="font-semibold mr-1">{profile.username}</span>
+                  {selectedProfilePost.caption}
+                </p>
+              </div>
+            )}
+            <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
+              <button
+                type="button"
+                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${profilePostLiked.has(selectedProfilePost.id) ? "text-red-500" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() =>
+                  setProfilePostLiked((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(selectedProfilePost.id))
+                      next.delete(selectedProfilePost.id);
+                    else next.add(selectedProfilePost.id);
+                    return next;
+                  })
+                }
+                data-ocid="profile.post.like"
+              >
+                <span>
+                  {profilePostLiked.has(selectedProfilePost.id) ? "❤️" : "🤍"}
+                </span>
+                <span>
+                  {profilePostLiked.has(selectedProfilePost.id) ? 121 : 120}{" "}
+                  likes
+                </span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() =>
+                  document.getElementById("profile-post-comment-input")?.focus()
+                }
+                data-ocid="profile.post.comment"
+              >
+                <span>💬</span>
+                <span>
+                  {(profilePostComments[selectedProfilePost.id]?.length ?? 0) +
+                    3}{" "}
+                  comments
+                </span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                onClick={() => {
+                  navigator.clipboard?.writeText(window.location.href);
+                }}
+                data-ocid="profile.post.share"
+              >
+                <span>📤</span>
+              </button>
+            </div>
+            <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">priya_k</span>{" "}
+                Beautiful! ✨
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">rahul_dev</span>{" "}
+                🔥🔥
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">neha_s</span>{" "}
+                Love this vibe 😍
+              </p>
+              {(profilePostComments[selectedProfilePost.id] || []).map((c) => (
+                <p key={c} className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {profile.username}
+                  </span>{" "}
+                  {c}
+                </p>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
+              <input
+                id="profile-post-comment-input"
+                type="text"
+                placeholder="Add a comment..."
+                value={profilePostCommentInput}
+                onChange={(e) => setProfilePostCommentInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    profilePostCommentInput.trim() &&
+                    selectedProfilePost
+                  ) {
+                    setProfilePostComments((prev) => ({
+                      ...prev,
+                      [selectedProfilePost.id]: [
+                        ...(prev[selectedProfilePost.id] || []),
+                        profilePostCommentInput.trim(),
+                      ],
+                    }));
+                    setProfilePostCommentInput("");
+                  }
+                }}
+                className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                data-ocid="profile.post.input"
+              />
+              <button
+                type="button"
+                className="text-sm font-semibold text-primary disabled:opacity-40"
+                disabled={!profilePostCommentInput.trim()}
+                onClick={() => {
+                  if (profilePostCommentInput.trim() && selectedProfilePost) {
+                    setProfilePostComments((prev) => ({
+                      ...prev,
+                      [selectedProfilePost.id]: [
+                        ...(prev[selectedProfilePost.id] || []),
+                        profilePostCommentInput.trim(),
+                      ],
+                    }));
+                    setProfilePostCommentInput("");
+                  }
+                }}
+                data-ocid="profile.post.send"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedTaggedPost && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          data-ocid="tagged.modal"
+        >
+          <button
+            type="button"
+            aria-label="Close"
+            className="absolute inset-0 w-full h-full cursor-default"
+            onClick={() => setSelectedTaggedPost(null)}
+          />
+          <div
+            className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xl z-10"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="font-semibold text-sm">@_you</span>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setSelectedTaggedPost(null)}
+                data-ocid="tagged.close_button"
+              >
+                ✕
+              </button>
+            </div>
+            {/* Image */}
+            <img
+              src={selectedTaggedPost.image}
+              alt="tagged post"
+              className="w-full aspect-square object-cover"
+            />
+            {/* Actions */}
+            <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
+              <button
+                type="button"
+                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${taggedLiked.has(selectedTaggedPost.id) ? "text-red-500" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() =>
+                  setTaggedLiked((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(selectedTaggedPost.id))
+                      next.delete(selectedTaggedPost.id);
+                    else next.add(selectedTaggedPost.id);
+                    return next;
+                  })
+                }
+                data-ocid="tagged.toggle"
+              >
+                <span>
+                  {taggedLiked.has(selectedTaggedPost.id) ? "❤️" : "🤍"}
+                </span>
+                <span>
+                  {taggedLiked.has(selectedTaggedPost.id) ? 243 : 242} likes
+                </span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() =>
+                  document.getElementById("tagged-comment-input")?.focus()
+                }
+                data-ocid="tagged.secondary_button"
+              >
+                <span>💬</span>
+                <span>
+                  {(taggedComments[selectedTaggedPost.id]?.length ?? 0) + 4}{" "}
+                  comments
+                </span>
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                onClick={() => {
+                  navigator.clipboard?.writeText(window.location.href);
+                }}
+                data-ocid="tagged.button"
+              >
+                <span>📤</span>
+              </button>
+            </div>
+            {/* Comments */}
+            <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">rahul_dev</span>{" "}
+                Great shot! 🔥
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">priya_k</span>{" "}
+                Love this ✨
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">
+                  amit_photo
+                </span>{" "}
+                Amazing vibes 😍
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">neha_s</span> So
+                good! 🙌
+              </p>
+              {(taggedComments[selectedTaggedPost.id] || []).map((c) => (
+                <p key={c} className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">you</span> {c}
+                </p>
+              ))}
+            </div>
+            {/* Comment input */}
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
+              <input
+                id="tagged-comment-input"
+                type="text"
+                placeholder="Add a comment..."
+                value={taggedCommentInput}
+                onChange={(e) => setTaggedCommentInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    taggedCommentInput.trim() &&
+                    selectedTaggedPost
+                  ) {
+                    setTaggedComments((prev) => ({
+                      ...prev,
+                      [selectedTaggedPost.id]: [
+                        ...(prev[selectedTaggedPost.id] || []),
+                        taggedCommentInput.trim(),
+                      ],
+                    }));
+                    setTaggedCommentInput("");
+                  }
+                }}
+                className="flex-1 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                data-ocid="tagged.input"
+              />
+              <button
+                type="button"
+                className="text-sm font-semibold text-primary disabled:opacity-40"
+                disabled={!taggedCommentInput.trim()}
+                onClick={() => {
+                  if (taggedCommentInput.trim() && selectedTaggedPost) {
+                    setTaggedComments((prev) => ({
+                      ...prev,
+                      [selectedTaggedPost.id]: [
+                        ...(prev[selectedTaggedPost.id] || []),
+                        taggedCommentInput.trim(),
+                      ],
+                    }));
+                    setTaggedCommentInput("");
+                  }
+                }}
+                data-ocid="tagged.submit_button"
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -6192,6 +6787,7 @@ function UserProfileModal({
   posts,
   stories,
   followedUsers,
+  allUsers,
   onToggleFollow,
   onClose,
   onOpenStory,
@@ -6201,6 +6797,7 @@ function UserProfileModal({
   posts: Post[];
   stories: Story[];
   followedUsers: Set<number>;
+  allUsers: AppUser[];
   onToggleFollow: (id: number) => void;
   onClose: () => void;
   onOpenStory: (story: Story) => void;
@@ -6210,6 +6807,18 @@ function UserProfileModal({
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [localLiked, setLocalLiked] = useState<Set<number>>(new Set());
+  const [showUserFollowersModal, setShowUserFollowersModal] = useState(false);
+  const [showUserFollowingModal, setShowUserFollowingModal] = useState(false);
+  const [userFollowersSearch, setUserFollowersSearch] = useState("");
+  const [userFollowingSearch, setUserFollowingSearch] = useState("");
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  // Compute mutual followers: users that current user follows AND also follow the viewed user
+  // We simulate this with mock follower data based on USERS array
+  const mutualFollowers = allUsers
+    .filter((u) => u.id !== user.id && followedUsers.has(u.id))
+    .slice(0, 5);
 
   const userPosts = posts.filter(
     (p) => p.user.id === user.id && (!p.type || p.type === "image"),
@@ -6234,453 +6843,773 @@ function UserProfileModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex flex-col"
-      style={{ backgroundColor: "var(--app-bg)" }}
-      data-ocid="user_profile_modal"
-    >
-      {/* Header bar */}
+    <>
       <div
-        className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
-        style={{
-          backgroundColor: "var(--app-card)",
-          borderColor: "var(--app-border)",
-        }}
+        className="fixed inset-0 z-[100] flex flex-col"
+        style={{ backgroundColor: "var(--app-bg)" }}
+        data-ocid="user_profile_modal"
       >
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex items-center gap-2 active:opacity-70 transition-opacity"
-          style={{ color: "var(--app-text)" }}
-          data-ocid="user_profile_modal.back_button"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="text-sm font-medium">Back</span>
-        </button>
-        <p
-          className="text-sm font-semibold"
-          style={{ color: "var(--app-text)" }}
-        >
-          @{user.username}
-        </p>
-        <div className="w-16" />
-      </div>
-
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Profile header */}
+        {/* Header bar */}
         <div
-          className="px-4 pt-5 pb-4"
-          style={{ backgroundColor: "var(--app-card)" }}
-        >
-          <div className="flex items-start gap-4 mb-4">
-            {/* Avatar with story ring */}
-            <button
-              type="button"
-              onClick={() => userStory && onOpenStory(userStory)}
-              className={userStory ? "cursor-pointer" : "cursor-default"}
-            >
-              {userStory ? (
-                <div
-                  style={{
-                    background:
-                      "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
-                    padding: 2.5,
-                    borderRadius: "50%",
-                  }}
-                >
-                  <div className="bg-background rounded-full p-[2px]">
-                    <Avatar className="w-20 h-20">
-                      <AvatarImage src={user.avatar} alt={user.name} />
-                      <AvatarFallback className="text-xl">
-                        {user.name[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                  </div>
-                </div>
-              ) : (
-                <Avatar className="w-20 h-20">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="text-xl">
-                    {user.name[0]}
-                  </AvatarFallback>
-                </Avatar>
-              )}
-            </button>
-
-            {/* Stats */}
-            <div className="flex-1 pt-2">
-              <div className="flex justify-around mb-3">
-                <div className="flex flex-col items-center">
-                  <span
-                    className="text-base font-bold"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {formatCount(user.posts)}
-                  </span>
-                  <span
-                    className="text-xs"
-                    style={{ color: "var(--app-text-muted)" }}
-                  >
-                    Posts
-                  </span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span
-                    className="text-base font-bold"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {formatCount(user.followers)}
-                  </span>
-                  <span
-                    className="text-xs"
-                    style={{ color: "var(--app-text-muted)" }}
-                  >
-                    Followers
-                  </span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span
-                    className="text-base font-bold"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {formatCount(user.following)}
-                  </span>
-                  <span
-                    className="text-xs"
-                    style={{ color: "var(--app-text-muted)" }}
-                  >
-                    Following
-                  </span>
-                </div>
-              </div>
-
-              {/* Follow + Message buttons */}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="flex-1 rounded-lg text-sm font-semibold h-9"
-                  style={{
-                    backgroundColor: isFollowing
-                      ? "var(--app-card)"
-                      : "var(--app-accent)",
-                    color: isFollowing ? "var(--app-text)" : "#fff",
-                    border: isFollowing
-                      ? "1px solid var(--app-border)"
-                      : "none",
-                  }}
-                  onClick={() => onToggleFollow(user.id)}
-                  data-ocid="user_profile_modal.toggle"
-                >
-                  {isFollowing ? "Following" : "Follow"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 rounded-lg text-sm font-semibold h-9 gap-1.5"
-                  style={{
-                    borderColor: "var(--app-border)",
-                    color: "var(--app-text)",
-                  }}
-                  onClick={() => onMessage?.(user.id)}
-                  data-ocid="user_profile_modal.message_button"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Message
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Name + bio */}
-          <div>
-            <p
-              className="text-sm font-bold"
-              style={{ color: "var(--app-text)" }}
-            >
-              {user.name}
-            </p>
-            {user.bio && (
-              <p
-                className="text-sm mt-0.5 leading-relaxed"
-                style={{ color: "var(--app-text-muted)" }}
-              >
-                {user.bio}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div
-          className="flex border-b sticky top-0 z-10"
+          className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
           style={{
             backgroundColor: "var(--app-card)",
             borderColor: "var(--app-border)",
           }}
         >
-          {(["posts", "reels"] as const).map((tab) => (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex items-center gap-2 active:opacity-70 transition-opacity"
+            style={{ color: "var(--app-text)" }}
+            data-ocid="user_profile_modal.back_button"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="text-sm font-medium">Back</span>
+          </button>
+          <p
+            className="text-sm font-semibold"
+            style={{ color: "var(--app-text)" }}
+          >
+            @{user.username}
+          </p>
+          <div className="w-16 flex justify-end relative">
             <button
-              key={tab}
               type="button"
-              onClick={() => setActiveTab(tab)}
-              className="flex-1 py-3 text-sm font-medium transition-colors"
-              style={{
-                color:
-                  activeTab === tab
-                    ? "var(--app-accent)"
-                    : "var(--app-text-muted)",
-                borderBottom:
-                  activeTab === tab
-                    ? "2px solid var(--app-accent)"
-                    : "2px solid transparent",
-              }}
-              data-ocid={`user_profile_modal.${tab}.tab`}
+              onClick={() => setShowMoreMenu((v) => !v)}
+              className="p-2 rounded-full active:opacity-70 transition-opacity"
+              style={{ color: "var(--app-text)" }}
+              data-ocid="user_profile.more_options_button"
             >
-              {tab === "posts" ? "📷 Posts" : "🎬 Reels"}
+              <MoreHorizontal className="w-5 h-5" />
             </button>
-          ))}
+            {showMoreMenu && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-10 cursor-default"
+                  aria-label="Close menu"
+                  onClick={() => setShowMoreMenu(false)}
+                />
+                <div
+                  className="absolute right-0 top-10 z-20 rounded-xl shadow-lg border overflow-hidden min-w-[160px]"
+                  style={{
+                    backgroundColor: "var(--app-card)",
+                    borderColor: "var(--app-border)",
+                  }}
+                  data-ocid="user_profile.dropdown_menu"
+                >
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:opacity-80 transition-opacity"
+                    style={{ color: isBlocked ? "#22c55e" : "#ef4444" }}
+                    onClick={() => {
+                      setIsBlocked((v) => !v);
+                      toast(
+                        isBlocked
+                          ? "User unblocked."
+                          : "User blocked. You won't see their content.",
+                      );
+                      setShowMoreMenu(false);
+                    }}
+                    data-ocid="user_profile.block_button"
+                  >
+                    <span>{isBlocked ? "✅" : "🚫"}</span>
+                    <span>{isBlocked ? "Unblock" : "Block"}</span>
+                  </button>
+                  <div
+                    style={{ height: 1, backgroundColor: "var(--app-border)" }}
+                  />
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:opacity-80 transition-opacity"
+                    style={{ color: "#f59e0b" }}
+                    onClick={() => {
+                      toast("Report submitted. We'll review this account.");
+                      setShowMoreMenu(false);
+                    }}
+                    data-ocid="user_profile.report_button"
+                  >
+                    <span>🚩</span>
+                    <span>Report</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Grid */}
-        {displayedPosts.length === 0 ? (
-          <div
-            className="flex flex-col items-center justify-center py-16 gap-3"
-            style={{ color: "var(--app-text-muted)" }}
-            data-ocid="user_profile_modal.empty_state"
-          >
-            {activeTab === "posts" ? (
-              <Camera className="w-12 h-12 opacity-30" />
-            ) : (
-              <Play className="w-12 h-12 opacity-30" />
-            )}
-            <p className="text-sm">No {activeTab} yet</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-0.5 p-0.5">
-            {displayedPosts.map((post, idx) => (
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Blocked banner */}
+          {isBlocked && (
+            <div
+              className="mx-4 mt-3 px-4 py-3 rounded-xl flex items-center justify-between gap-3"
+              style={{
+                backgroundColor: "#fef2f2",
+                border: "1px solid #fca5a5",
+              }}
+              data-ocid="user_profile.blocked_banner"
+            >
+              <span className="text-sm text-red-600">
+                🚫 You have blocked this user.
+              </span>
               <button
-                key={post.id}
                 type="button"
-                onClick={() => setSelectedPost(post)}
-                className="relative aspect-square overflow-hidden active:opacity-80 transition-opacity"
-                data-ocid={`user_profile_modal.post.${idx + 1}`}
+                className="text-xs font-semibold text-red-600 underline"
+                onClick={() => {
+                  setIsBlocked(false);
+                  toast("User unblocked.");
+                }}
+                data-ocid="user_profile.unblock_button"
               >
-                {post.type === "reel" && post.videoUrl ? (
-                  <video
-                    src={post.videoUrl}
-                    className="w-full h-full object-cover"
-                    muted
-                    playsInline
-                  />
+                Unblock
+              </button>
+            </div>
+          )}
+          {/* Profile header */}
+          <div
+            className="px-4 pt-5 pb-4"
+            style={{ backgroundColor: "var(--app-card)" }}
+          >
+            <div className="flex items-start gap-4 mb-4">
+              {/* Avatar with story ring */}
+              <button
+                type="button"
+                onClick={() => userStory && onOpenStory(userStory)}
+                className={userStory ? "cursor-pointer" : "cursor-default"}
+              >
+                {userStory ? (
+                  <div
+                    style={{
+                      background:
+                        "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
+                      padding: 2.5,
+                      borderRadius: "50%",
+                    }}
+                  >
+                    <div className="bg-background rounded-full p-[2px]">
+                      <Avatar className="w-20 h-20">
+                        <AvatarImage src={user.avatar} alt={user.name} />
+                        <AvatarFallback className="text-xl">
+                          {user.name[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+                  </div>
                 ) : (
-                  <img
-                    src={post.image}
-                    alt={post.caption}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
+                  <Avatar className="w-20 h-20">
+                    <AvatarImage src={user.avatar} alt={user.name} />
+                    <AvatarFallback className="text-xl">
+                      {user.name[0]}
+                    </AvatarFallback>
+                  </Avatar>
                 )}
-                <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors duration-150 flex items-center justify-center">
-                  <div className="opacity-0 hover:opacity-100 transition-opacity flex items-center gap-3 text-white">
-                    <span className="flex items-center gap-1 text-xs font-semibold">
-                      <Heart className="w-4 h-4 fill-white" />{" "}
-                      {formatCount(post.likes)}
+              </button>
+
+              {/* Stats */}
+              <div className="flex-1 pt-2">
+                <div className="flex justify-around mb-3">
+                  <div className="flex flex-col items-center">
+                    <span
+                      className="text-base font-bold"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {formatCount(user.posts)}
                     </span>
-                    <span className="flex items-center gap-1 text-xs font-semibold">
-                      <MessageCircle className="w-4 h-4 fill-white" />{" "}
-                      {post.comments}
+                    <span
+                      className="text-xs"
+                      style={{ color: "var(--app-text-muted)" }}
+                    >
+                      Posts
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    className="flex flex-col items-center hover:opacity-70 transition-opacity"
+                    onClick={() => setShowUserFollowersModal(true)}
+                    data-ocid="user_profile_modal.followers_button"
+                  >
+                    <span
+                      className="text-base font-bold"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {formatCount(user.followers)}
+                    </span>
+                    <span
+                      className="text-xs"
+                      style={{ color: "var(--app-text-muted)" }}
+                    >
+                      Followers
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex flex-col items-center hover:opacity-70 transition-opacity"
+                    onClick={() => setShowUserFollowingModal(true)}
+                    data-ocid="user_profile_modal.following_button"
+                  >
+                    <span
+                      className="text-base font-bold"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {formatCount(user.following)}
+                    </span>
+                    <span
+                      className="text-xs"
+                      style={{ color: "var(--app-text-muted)" }}
+                    >
+                      Following
+                    </span>
+                  </button>
                 </div>
-                {post.type === "reel" && (
-                  <div className="absolute top-1.5 right-1.5">
-                    <Play className="w-3.5 h-3.5 fill-white text-white" />
-                  </div>
-                )}
+
+                {/* Follow + Message buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1 rounded-lg text-sm font-semibold h-9"
+                    style={{
+                      backgroundColor: isFollowing
+                        ? "var(--app-card)"
+                        : "var(--app-accent)",
+                      color: isFollowing ? "var(--app-text)" : "#fff",
+                      border: isFollowing
+                        ? "1px solid var(--app-border)"
+                        : "none",
+                    }}
+                    onClick={() => onToggleFollow(user.id)}
+                    data-ocid="user_profile_modal.toggle"
+                  >
+                    {isFollowing ? "Following" : "Follow"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 rounded-lg text-sm font-semibold h-9 gap-1.5"
+                    style={{
+                      borderColor: "var(--app-border)",
+                      color: "var(--app-text)",
+                    }}
+                    onClick={() => onMessage?.(user.id)}
+                    data-ocid="user_profile_modal.message_button"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    Message
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Name + bio */}
+            <div>
+              <p
+                className="text-sm font-bold"
+                style={{ color: "var(--app-text)" }}
+              >
+                {user.name}
+              </p>
+              {user.bio && (
+                <p
+                  className="text-sm mt-0.5 leading-relaxed"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  {user.bio}
+                </p>
+              )}
+            </div>
+
+            {/* Mutual Followers */}
+            {mutualFollowers.length > 0 && (
+              <div className="flex items-center gap-2 mt-3">
+                <div className="flex -space-x-2">
+                  {mutualFollowers.slice(0, 3).map((mu) => (
+                    <Avatar
+                      key={mu.id}
+                      className="w-5 h-5 border-2"
+                      style={{ borderColor: "var(--app-card)" }}
+                    >
+                      <AvatarImage src={mu.avatar} alt={mu.name} />
+                      <AvatarFallback className="text-[8px]">
+                        {mu.name[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                  ))}
+                </div>
+                <p
+                  className="text-xs"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  Followed by{" "}
+                  <span
+                    className="font-semibold"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {mutualFollowers[0].username}
+                  </span>
+                  {mutualFollowers.length > 1 && (
+                    <>
+                      {" "}
+                      and{" "}
+                      <span
+                        className="font-semibold"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {mutualFollowers.length - 1} other
+                        {mutualFollowers.length - 1 > 1 ? "s" : ""}
+                      </span>
+                    </>
+                  )}{" "}
+                  you follow
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Tabs */}
+          <div
+            className="flex border-b sticky top-0 z-10"
+            style={{
+              backgroundColor: "var(--app-card)",
+              borderColor: "var(--app-border)",
+            }}
+          >
+            {(["posts", "reels"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className="flex-1 py-3 text-sm font-medium transition-colors"
+                style={{
+                  color:
+                    activeTab === tab
+                      ? "var(--app-accent)"
+                      : "var(--app-text-muted)",
+                  borderBottom:
+                    activeTab === tab
+                      ? "2px solid var(--app-accent)"
+                      : "2px solid transparent",
+                }}
+                data-ocid={`user_profile_modal.${tab}.tab`}
+              >
+                {tab === "posts" ? "📷 Posts" : "🎬 Reels"}
               </button>
             ))}
           </div>
-        )}
-      </div>
 
-      {/* Post detail dialog */}
-      {selectedPost && (
-        <div
-          className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center"
-          style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSelectedPost(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setSelectedPost(null);
-          }}
-        >
-          <div
-            className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
-            style={{ backgroundColor: "var(--app-card)", maxHeight: "90vh" }}
-          >
-            {/* Close bar */}
+          {/* Grid */}
+          {displayedPosts.length === 0 ? (
             <div
-              className="flex items-center justify-between px-4 py-3 border-b"
-              style={{ borderColor: "var(--app-border)" }}
+              className="flex flex-col items-center justify-center py-16 gap-3"
+              style={{ color: "var(--app-text-muted)" }}
+              data-ocid="user_profile_modal.empty_state"
             >
-              <div className="flex items-center gap-2">
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback>{user.name[0]}</AvatarFallback>
-                </Avatar>
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {user.username}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedPost(null)}
-                className="p-1 rounded-full hover:bg-muted"
-                style={{ color: "var(--app-text-muted)" }}
-                data-ocid="user_profile_modal.close_button"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {/* Image/video */}
-            <div className="aspect-square w-full overflow-hidden bg-black">
-              {selectedPost.type === "reel" && selectedPost.videoUrl ? (
-                <video
-                  src={selectedPost.videoUrl}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
+              {activeTab === "posts" ? (
+                <Camera className="w-12 h-12 opacity-30" />
               ) : (
-                <img
-                  src={selectedPost.image}
-                  alt={selectedPost.caption}
-                  className="w-full h-full object-cover"
-                />
+                <Play className="w-12 h-12 opacity-30" />
               )}
+              <p className="text-sm">No {activeTab} yet</p>
             </div>
-            {/* Actions */}
-            <div
-              className="px-4 py-3 overflow-y-auto"
-              style={{ maxHeight: "40vh" }}
-            >
-              <div className="flex items-center gap-4 mb-2">
+          ) : (
+            <div className="grid grid-cols-3 gap-0.5 p-0.5">
+              {displayedPosts.map((post, idx) => (
                 <button
+                  key={post.id}
                   type="button"
-                  onClick={() => handleLikePost(selectedPost.id)}
-                  className="flex items-center gap-1.5 active:scale-90 transition-transform"
+                  onClick={() => setSelectedPost(post)}
+                  className="relative aspect-square overflow-hidden active:opacity-80 transition-opacity"
+                  data-ocid={`user_profile_modal.post.${idx + 1}`}
                 >
-                  <Heart
-                    className="w-6 h-6 transition-colors"
-                    style={{
-                      color:
-                        localLiked.has(selectedPost.id) || selectedPost.isLiked
-                          ? "#E53935"
-                          : "var(--app-text-muted)",
-                      fill:
-                        localLiked.has(selectedPost.id) || selectedPost.isLiked
-                          ? "#E53935"
-                          : "none",
-                    }}
-                  />
-                  <span
-                    className="text-sm font-medium"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {formatCount(
-                      selectedPost.likes +
-                        (localLiked.has(selectedPost.id) ? 1 : 0),
-                    )}
-                  </span>
+                  {post.type === "reel" && post.videoUrl ? (
+                    <video
+                      src={post.videoUrl}
+                      className="w-full h-full object-cover"
+                      muted
+                      playsInline
+                    />
+                  ) : (
+                    <img
+                      src={post.image}
+                      alt={post.caption}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors duration-150 flex items-center justify-center">
+                    <div className="opacity-0 hover:opacity-100 transition-opacity flex items-center gap-3 text-white">
+                      <span className="flex items-center gap-1 text-xs font-semibold">
+                        <Heart className="w-4 h-4 fill-white" />{" "}
+                        {formatCount(post.likes)}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs font-semibold">
+                        <MessageCircle className="w-4 h-4 fill-white" />{" "}
+                        {post.comments}
+                      </span>
+                    </div>
+                  </div>
+                  {post.type === "reel" && (
+                    <div className="absolute top-1.5 right-1.5">
+                      <Play className="w-3.5 h-3.5 fill-white text-white" />
+                    </div>
+                  )}
                 </button>
-                <button type="button" className="flex items-center gap-1.5">
-                  <MessageCircle
-                    className="w-6 h-6"
-                    style={{ color: "var(--app-text-muted)" }}
-                  />
-                  <span
-                    className="text-sm font-medium"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {selectedPost.comments}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="ml-auto"
-                  onClick={() => toast.success("Post shared! 📤")}
-                >
-                  <Share2
-                    className="w-6 h-6"
-                    style={{ color: "var(--app-text-muted)" }}
-                  />
-                </button>
-              </div>
-              <p className="text-sm mb-1" style={{ color: "var(--app-text)" }}>
-                <span className="font-semibold mr-1">{user.username}</span>
-                {selectedPost.caption}
-              </p>
-              {(selectedPost.commentList ?? []).slice(0, 3).map((c) => (
-                <p
-                  key={c.id}
-                  className="text-sm mb-0.5"
-                  style={{ color: "var(--app-text-muted)" }}
-                >
-                  <span
-                    className="font-semibold mr-1"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {c.username}
-                  </span>
-                  {c.text}
-                </p>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Post detail dialog */}
+        {selectedPost && (
+          <div
+            className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center"
+            style={{ backgroundColor: "rgba(0,0,0,0.85)" }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedPost(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSelectedPost(null);
+            }}
+          >
+            <div
+              className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
+              style={{ backgroundColor: "var(--app-card)", maxHeight: "90vh" }}
+            >
+              {/* Close bar */}
               <div
-                className="flex gap-2 mt-3 border-t pt-3"
+                className="flex items-center justify-between px-4 py-3 border-b"
                 style={{ borderColor: "var(--app-border)" }}
               >
-                <input
-                  type="text"
-                  placeholder="Add a comment..."
-                  value={commentInput}
-                  onChange={(e) => setCommentInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && commentInput.trim()) {
-                      toast.success("Comment added!");
-                      setCommentInput("");
-                    }
-                  }}
-                  className="flex-1 text-sm bg-transparent outline-none"
-                  style={{ color: "var(--app-text)" }}
-                  data-ocid="user_profile_modal.input"
-                />
-                {commentInput.trim() && (
+                <div className="flex items-center gap-2">
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src={user.avatar} alt={user.name} />
+                    <AvatarFallback>{user.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {user.username}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPost(null)}
+                  className="p-1 rounded-full hover:bg-muted"
+                  style={{ color: "var(--app-text-muted)" }}
+                  data-ocid="user_profile_modal.close_button"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              {/* Image/video */}
+              <div className="aspect-square w-full overflow-hidden bg-black">
+                {selectedPost.type === "reel" && selectedPost.videoUrl ? (
+                  <video
+                    src={selectedPost.videoUrl}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={selectedPost.image}
+                    alt={selectedPost.caption}
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+              {/* Actions */}
+              <div
+                className="px-4 py-3 overflow-y-auto"
+                style={{ maxHeight: "40vh" }}
+              >
+                <div className="flex items-center gap-4 mb-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      toast.success("Comment added!");
-                      setCommentInput("");
-                    }}
-                    className="text-sm font-semibold"
-                    style={{ color: "var(--app-accent)" }}
-                    data-ocid="user_profile_modal.submit_button"
+                    onClick={() => handleLikePost(selectedPost.id)}
+                    className="flex items-center gap-1.5 active:scale-90 transition-transform"
                   >
-                    Post
+                    <Heart
+                      className="w-6 h-6 transition-colors"
+                      style={{
+                        color:
+                          localLiked.has(selectedPost.id) ||
+                          selectedPost.isLiked
+                            ? "#E53935"
+                            : "var(--app-text-muted)",
+                        fill:
+                          localLiked.has(selectedPost.id) ||
+                          selectedPost.isLiked
+                            ? "#E53935"
+                            : "none",
+                      }}
+                    />
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {formatCount(
+                        selectedPost.likes +
+                          (localLiked.has(selectedPost.id) ? 1 : 0),
+                      )}
+                    </span>
                   </button>
-                )}
+                  <button type="button" className="flex items-center gap-1.5">
+                    <MessageCircle
+                      className="w-6 h-6"
+                      style={{ color: "var(--app-text-muted)" }}
+                    />
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {selectedPost.comments}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-auto"
+                    onClick={() => toast.success("Post shared! 📤")}
+                  >
+                    <Share2
+                      className="w-6 h-6"
+                      style={{ color: "var(--app-text-muted)" }}
+                    />
+                  </button>
+                </div>
+                <p
+                  className="text-sm mb-1"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  <span className="font-semibold mr-1">{user.username}</span>
+                  {selectedPost.caption}
+                </p>
+                {(selectedPost.commentList ?? []).slice(0, 3).map((c) => (
+                  <p
+                    key={c.id}
+                    className="text-sm mb-0.5"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    <span
+                      className="font-semibold mr-1"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {c.username}
+                    </span>
+                    {c.text}
+                  </p>
+                ))}
+                <div
+                  className="flex gap-2 mt-3 border-t pt-3"
+                  style={{ borderColor: "var(--app-border)" }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Add a comment..."
+                    value={commentInput}
+                    onChange={(e) => setCommentInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && commentInput.trim()) {
+                        toast.success("Comment added!");
+                        setCommentInput("");
+                      }
+                    }}
+                    className="flex-1 text-sm bg-transparent outline-none"
+                    style={{ color: "var(--app-text)" }}
+                    data-ocid="user_profile_modal.input"
+                  />
+                  {commentInput.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toast.success("Comment added!");
+                        setCommentInput("");
+                      }}
+                      className="text-sm font-semibold"
+                      style={{ color: "var(--app-accent)" }}
+                      data-ocid="user_profile_modal.submit_button"
+                    >
+                      Post
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+      <Dialog
+        open={showUserFollowersModal}
+        onOpenChange={setShowUserFollowersModal}
+      >
+        <DialogContent className="max-w-sm max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Followers</DialogTitle>
+          </DialogHeader>
+          <div className="relative mb-1">
+            <input
+              type="text"
+              placeholder="Search followers..."
+              value={userFollowersSearch}
+              onChange={(e) => setUserFollowersSearch(e.target.value)}
+              className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none"
+              style={{ color: "var(--app-text)" }}
+            />
+            <svg
+              aria-label="Search"
+              role="img"
+              className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <title>Search</title>
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </div>
+          <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2">
+            {USERS.slice(0, 6)
+              .filter(
+                (u) =>
+                  userFollowersSearch === "" ||
+                  u.name
+                    .toLowerCase()
+                    .includes(userFollowersSearch.toLowerCase()) ||
+                  u.username
+                    .toLowerCase()
+                    .includes(userFollowersSearch.toLowerCase()),
+              )
+              .map((u) => (
+                <div key={u.id} className="flex items-center gap-3">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage src={u.avatar} alt={u.name} />
+                    <AvatarFallback>{u.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-sm font-semibold truncate"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {u.name}
+                    </p>
+                    <p
+                      className="text-xs truncate"
+                      style={{ color: "var(--app-text-muted)" }}
+                    >
+                      @{u.username}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={followedUsers.has(u.id) ? "outline" : "default"}
+                    className="text-xs h-7 px-3"
+                    onClick={() => onToggleFollow(u.id)}
+                  >
+                    {followedUsers.has(u.id) ? "Following" : "Follow"}
+                  </Button>
+                </div>
+              ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={showUserFollowingModal}
+        onOpenChange={setShowUserFollowingModal}
+      >
+        <DialogContent className="max-w-sm max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Following</DialogTitle>
+          </DialogHeader>
+          <div className="relative mb-1">
+            <input
+              type="text"
+              placeholder="Search following..."
+              value={userFollowingSearch}
+              onChange={(e) => setUserFollowingSearch(e.target.value)}
+              className="w-full px-3 py-2 pl-8 text-sm rounded-lg border border-border bg-background outline-none"
+              style={{ color: "var(--app-text)" }}
+            />
+            <svg
+              aria-label="Search"
+              role="img"
+              className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <title>Search</title>
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </div>
+          <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1 scroll-smooth pb-2">
+            {USERS.filter(
+              (u) =>
+                followedUsers.has(u.id) &&
+                (userFollowingSearch === "" ||
+                  u.name
+                    .toLowerCase()
+                    .includes(userFollowingSearch.toLowerCase()) ||
+                  u.username
+                    .toLowerCase()
+                    .includes(userFollowingSearch.toLowerCase())),
+            ).length === 0 ? (
+              <p
+                className="text-sm text-center py-4"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                No following yet.
+              </p>
+            ) : (
+              USERS.filter(
+                (u) =>
+                  followedUsers.has(u.id) &&
+                  (userFollowingSearch === "" ||
+                    u.name
+                      .toLowerCase()
+                      .includes(userFollowingSearch.toLowerCase()) ||
+                    u.username
+                      .toLowerCase()
+                      .includes(userFollowingSearch.toLowerCase())),
+              ).map((u) => (
+                <div key={u.id} className="flex items-center gap-3">
+                  <Avatar className="w-10 h-10">
+                    <AvatarImage src={u.avatar} alt={u.name} />
+                    <AvatarFallback>{u.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-sm font-semibold truncate"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      {u.name}
+                    </p>
+                    <p
+                      className="text-xs truncate"
+                      style={{ color: "var(--app-text-muted)" }}
+                    >
+                      @{u.username}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-7 px-3"
+                    onClick={() => onToggleFollow(u.id)}
+                  >
+                    Following
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -7011,6 +7940,7 @@ export default function App() {
           posts={posts}
           stories={stories}
           followedUsers={followedUsers}
+          allUsers={USERS}
           onToggleFollow={(id) =>
             setFollowedUsers((prev) => {
               const next = new Set(prev);
