@@ -29,6 +29,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   Flag,
   Hash,
   Heart,
@@ -7002,6 +7003,9 @@ function UserProfileModal({
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const [localLiked, setLocalLiked] = useState<Set<number>>(new Set());
+  const [localBookmarked, setLocalBookmarked] = useState<Set<number>>(
+    new Set(),
+  );
   const [showProfileShareModal, setShowProfileShareModal] = useState(false);
   const [showUserFollowersModal, setShowUserFollowersModal] = useState(false);
   const [showUserFollowingModal, setShowUserFollowingModal] = useState(false);
@@ -7038,6 +7042,20 @@ function UserProfileModal({
     });
   }
 
+  async function handleDownloadPost(imageUrl: string) {
+    try {
+      const a = document.createElement("a");
+      a.href = imageUrl;
+      a.download = "connectly-post.jpg";
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success("Downloading... ⬇️");
+    } catch {
+      toast.error("Download failed");
+    }
+  }
   return (
     <>
       <div
@@ -7564,6 +7582,51 @@ function UserProfileModal({
                     >
                       {selectedPost.comments}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="active:scale-90 transition-transform"
+                    onClick={() => {
+                      const wasBookmarked = localBookmarked.has(
+                        selectedPost.id,
+                      );
+                      setLocalBookmarked((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(selectedPost.id))
+                          next.delete(selectedPost.id);
+                        else next.add(selectedPost.id);
+                        return next;
+                      });
+                      if (!wasBookmarked) {
+                        toast.success("Post saved! 🔖");
+                      } else {
+                        toast.success("Post unsaved");
+                      }
+                    }}
+                    data-ocid="post_detail.bookmark_button"
+                  >
+                    <Bookmark
+                      className="w-6 h-6"
+                      style={{
+                        color: localBookmarked.has(selectedPost.id)
+                          ? "#FACC15"
+                          : "var(--app-text-muted)",
+                        fill: localBookmarked.has(selectedPost.id)
+                          ? "#FACC15"
+                          : "none",
+                      }}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    className="active:scale-90 transition-transform"
+                    onClick={() => handleDownloadPost(selectedPost.image)}
+                    data-ocid="post_detail.download_button"
+                  >
+                    <Download
+                      className="w-6 h-6"
+                      style={{ color: "var(--app-text-muted)" }}
+                    />
                   </button>
                   <button
                     type="button"
