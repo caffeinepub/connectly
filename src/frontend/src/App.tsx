@@ -155,6 +155,7 @@ interface Reel {
   likes: number;
   comments: number;
   isLiked?: boolean;
+  isBookmarked?: boolean;
 }
 
 // ─── MOCK DATA ────────────────────────────────────────────────────────────────
@@ -2784,10 +2785,17 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
     5: ["Made this at home!", "Recipe please 🍕", "Looks delicious!"],
   });
   const [commentInput, setCommentInput] = useState("");
+  const [savedReels, setSavedReels] = useState<Set<number>>(
+    () =>
+      new Set(
+        JSON.parse(localStorage.getItem("connectly_saved_reels") || "[]"),
+      ),
+  );
   const [doubleTapId, setDoubleTapId] = useState<number | null>(null);
   const reelRefs = useRef<(HTMLDivElement | null)[]>([]);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const lastTapRef = useRef<Record<number, number>>({});
+  const snapContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -2837,6 +2845,24 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
     toast.success("Reel shared! 📤");
   }
 
+  function handleBookmark(id: number) {
+    setSavedReels((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        toast.success("Removed from saved");
+      } else {
+        next.add(id);
+        toast.success("Saved to collection! 🔖");
+      }
+      localStorage.setItem(
+        "connectly_saved_reels",
+        JSON.stringify(Array.from(next)),
+      );
+      return next;
+    });
+  }
+
   function handleTap(reelId: number) {
     const now = Date.now();
     const last = lastTapRef.current[reelId] ?? 0;
@@ -2882,175 +2908,234 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
         ))}
       </div>
       <div className="reels-fullscreen-container" data-ocid="reels.page">
-        {reels.map((reel, i) => (
-          <div
-            key={reel.id}
-            ref={(el) => {
-              reelRefs.current[i] = el;
+        {/* Desktop nav arrows */}
+        <div className="hidden md:flex flex-col gap-3 absolute right-6 top-1/2 -translate-y-1/2 z-50">
+          <button
+            type="button"
+            onClick={() => {
+              const prev = activeIndex - 1;
+              if (prev >= 0)
+                reelRefs.current[prev]?.scrollIntoView({ behavior: "smooth" });
             }}
-            data-reel-index={i}
-            className="snap-item relative w-full flex-shrink-0"
-            style={{ height: "100%" }}
-            onClick={() => handleTap(reel.id)}
-            onKeyDown={(e) => e.key === "Enter" && handleTap(reel.id)}
-            data-ocid={`reels.item.${i + 1}`}
+            disabled={activeIndex === 0}
+            className="p-2 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition disabled:opacity-30 disabled:cursor-not-allowed"
+            data-ocid="reels.pagination_prev"
+            aria-label="Previous reel"
           >
-            {reel.videoUrl ? (
-              <video
-                ref={(el) => {
-                  videoRefs.current[i] = el;
-                }}
-                src={reel.videoUrl}
-                muted={!soundOn}
-                loop
-                playsInline
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <img
-                src={reel.image}
-                alt="reel"
-                className="w-full h-full object-cover"
-              />
-            )}
-            {/* Gradient overlay */}
+            ↑
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const next = activeIndex + 1;
+              if (next < reels.length)
+                reelRefs.current[next]?.scrollIntoView({ behavior: "smooth" });
+            }}
+            disabled={activeIndex === reels.length - 1}
+            className="p-2 rounded-full bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 transition disabled:opacity-30 disabled:cursor-not-allowed"
+            data-ocid="reels.pagination_next"
+            aria-label="Next reel"
+          >
+            ↓
+          </button>
+        </div>
+        <div className="snap-container" ref={snapContainerRef}>
+          {reels.map((reel, i) => (
             <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                background:
-                  "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 40%, transparent 70%)",
+              key={reel.id}
+              ref={(el) => {
+                reelRefs.current[i] = el;
               }}
-            />
-            {/* Double-tap heart animation */}
-            {doubleTapId === reel.id && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                <span className="text-6xl animate-ping">❤️</span>
-              </div>
-            )}
-            {/* Bottom info */}
-            <div
-              className="absolute bottom-6 left-4 right-16 pointer-events-none"
-              style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+              data-reel-index={i}
+              className="snap-item relative w-full flex-shrink-0"
+              style={{ height: "100%" }}
+              onClick={() => handleTap(reel.id)}
+              onKeyDown={(e) => e.key === "Enter" && handleTap(reel.id)}
+              data-ocid={`reels.item.${i + 1}`}
             >
-              <div className="flex items-center gap-2 mb-2">
-                <Avatar className="w-9 h-9 border-2 border-white">
-                  <AvatarImage src={reel.user.avatar} alt={reel.user.name} />
-                  <AvatarFallback>{reel.user.name[0]}</AvatarFallback>
-                </Avatar>
-                <span className="text-white text-sm font-semibold">
-                  {reel.user.username}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => e.stopPropagation()}
-                  className="border border-white text-white text-xs px-3 py-0.5 rounded-full pointer-events-auto"
-                  data-ocid={`reels.item.${i + 1}.button`}
-                >
-                  Follow
-                </button>
-              </div>
-              <p className="text-white text-sm">{reel.caption}</p>
-              <div className="flex items-center gap-1 mt-2 text-white/80 text-xs">
-                <Music className="w-3 h-3" />
-                <span>Original Audio • {reel.user.name}</span>
-              </div>
-            </div>
-            {/* Swipe up hint — first reel only */}
-            {i === 0 && (
-              <div className="reel-swipe-hint absolute bottom-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none z-10">
-                <span
-                  className="text-white/80 text-xs"
-                  style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
-                >
-                  ↑ Swipe up
-                </span>
-              </div>
-            )}
-            {/* Sound toggle — top right */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSoundOn((s) => !s);
-              }}
-              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/40 backdrop-blur-sm"
-              style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
-              data-ocid={`reels.item.${i + 1}.toggle`}
-            >
-              {soundOn ? (
-                <Volume2 className="w-5 h-5 text-white" />
+              {reel.videoUrl ? (
+                <video
+                  ref={(el) => {
+                    videoRefs.current[i] = el;
+                  }}
+                  src={reel.videoUrl}
+                  muted={!soundOn}
+                  loop
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
               ) : (
-                <VolumeX className="w-5 h-5 text-white" />
+                <img
+                  src={reel.image}
+                  alt="reel"
+                  className="w-full h-full object-cover"
+                />
               )}
-            </button>
-            {/* Right actions */}
-            <div className="absolute right-4 bottom-6 flex flex-col items-center gap-6">
-              {/* Like */}
+              {/* Gradient overlay */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background:
+                    "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 40%, transparent 70%)",
+                }}
+              />
+              {/* Double-tap heart animation */}
+              {doubleTapId === reel.id && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                  <span className="text-6xl animate-ping">❤️</span>
+                </div>
+              )}
+              {/* Bottom info */}
+              <div
+                className="absolute bottom-6 left-4 right-16 pointer-events-none"
+                style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Avatar className="w-9 h-9 border-2 border-white">
+                    <AvatarImage src={reel.user.avatar} alt={reel.user.name} />
+                    <AvatarFallback>{reel.user.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <span className="text-white text-sm font-semibold">
+                    {reel.user.username}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => e.stopPropagation()}
+                    className="border border-white text-white text-xs px-3 py-0.5 rounded-full pointer-events-auto"
+                    data-ocid={`reels.item.${i + 1}.button`}
+                  >
+                    Follow
+                  </button>
+                </div>
+                <p className="text-white text-sm">{reel.caption}</p>
+                <div className="flex items-center gap-1 mt-2 text-white/80 text-xs">
+                  <Music className="w-3 h-3" />
+                  <span>Original Audio • {reel.user.name}</span>
+                </div>
+              </div>
+              {/* Swipe up hint — first reel only */}
+              {i === 0 && (
+                <div className="reel-swipe-hint absolute bottom-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none z-10">
+                  <span
+                    className="text-white/80 text-xs"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  >
+                    ↑ Swipe up
+                  </span>
+                </div>
+              )}
+              {/* Sound toggle — top right */}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleLike(reel.id);
+                  setSoundOn((s) => !s);
                 }}
-                className="flex flex-col items-center gap-1"
+                className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/40 backdrop-blur-sm"
                 style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
                 data-ocid={`reels.item.${i + 1}.toggle`}
               >
-                <Heart
-                  className="w-7 h-7"
-                  style={{
-                    color: reel.isLiked ? "#E53935" : "white",
-                    fill: reel.isLiked ? "#E53935" : "none",
+                {soundOn ? (
+                  <Volume2 className="w-5 h-5 text-white" />
+                ) : (
+                  <VolumeX className="w-5 h-5 text-white" />
+                )}
+              </button>
+              {/* Right actions */}
+              <div className="absolute right-4 bottom-6 flex flex-col items-center gap-6">
+                {/* Like */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLike(reel.id);
                   }}
-                />
-                <span
-                  className="text-white text-xs"
-                  style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  className="flex flex-col items-center gap-1"
+                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                  data-ocid={`reels.item.${i + 1}.toggle`}
                 >
-                  {formatCount(reel.likes)}
-                </span>
-              </button>
-              {/* Comment */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCommentReelId(reel.id);
-                }}
-                className="flex flex-col items-center gap-1"
-                style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
-                data-ocid={`reels.item.${i + 1}.open_modal_button`}
-              >
-                <MessageCircle className="w-7 h-7 text-white" />
-                <span
-                  className="text-white text-xs"
-                  style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  <Heart
+                    className="w-7 h-7"
+                    style={{
+                      color: reel.isLiked ? "#E53935" : "white",
+                      fill: reel.isLiked ? "#E53935" : "none",
+                    }}
+                  />
+                  <span
+                    className="text-white text-xs"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  >
+                    {formatCount(reel.likes)}
+                  </span>
+                </button>
+                {/* Comment */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCommentReelId(reel.id);
+                  }}
+                  className="flex flex-col items-center gap-1"
+                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                  data-ocid={`reels.item.${i + 1}.open_modal_button`}
                 >
-                  {formatCount(reel.comments)}
-                </span>
-              </button>
-              {/* Share */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleShare();
-                }}
-                className="flex flex-col items-center gap-1"
-                style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
-                data-ocid={`reels.item.${i + 1}.secondary_button`}
-              >
-                <Send className="w-7 h-7 text-white" />
-                <span
-                  className="text-white text-xs"
-                  style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  <MessageCircle className="w-7 h-7 text-white" />
+                  <span
+                    className="text-white text-xs"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  >
+                    {formatCount(reel.comments)}
+                  </span>
+                </button>
+                {/* Share */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleShare();
+                  }}
+                  className="flex flex-col items-center gap-1"
+                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                  data-ocid={`reels.item.${i + 1}.secondary_button`}
                 >
-                  Share
-                </span>
-              </button>
+                  <Send className="w-7 h-7 text-white" />
+                  <span
+                    className="text-white text-xs"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  >
+                    Share
+                  </span>
+                </button>
+
+                {/* Save/Bookmark */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleBookmark(reel.id);
+                  }}
+                  className="flex flex-col items-center gap-1"
+                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                  data-ocid={`reels.item.${i + 1}.bookmark_button`}
+                >
+                  <Bookmark
+                    className="w-7 h-7"
+                    style={{
+                      color: savedReels.has(reel.id) ? "#FACC15" : "white",
+                      fill: savedReels.has(reel.id) ? "#FACC15" : "none",
+                    }}
+                  />
+                  <span
+                    className="text-white text-xs"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                  >
+                    {savedReels.has(reel.id) ? "Saved" : "Save"}
+                  </span>
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Comments bottom sheet */}
@@ -3957,6 +4042,13 @@ function ProfilePage({
   const [followingSearch, setFollowingSearch] = useState("");
   const [blockedUsers, setBlockedUsers] = useState<Set<number>>(new Set());
   const [showBlockedModal, setShowBlockedModal] = useState(false);
+  const [profileActiveTab, setProfileActiveTab] = useState<"posts" | "saved">(
+    "posts",
+  );
+  const savedReelIds: number[] = JSON.parse(
+    localStorage.getItem("connectly_saved_reels") || "[]",
+  );
+  const savedReelsList = REELS.filter((r) => savedReelIds.includes(r.id));
   const profilePosts = Array.from({ length: 9 }, (_, i) => ({
     id: i + 1,
     image: `https://picsum.photos/seed/profile${i + 1}/300/300`,
@@ -4520,30 +4612,99 @@ function ProfilePage({
         </Dialog>
       </div>
 
-      {/* Posts Grid */}
+      {/* Tabs: Posts / Saved */}
       <div>
-        <h2
-          className="text-sm font-semibold mb-3"
-          style={{ color: "var(--app-text)" }}
+        <div
+          className="flex border-b mb-3"
+          style={{ borderColor: "var(--app-border)" }}
         >
-          Posts
-        </h2>
-        <div className="grid grid-cols-3 gap-1" data-ocid="profile.list">
-          {profilePosts.map((post, i) => (
+          {(["posts", "saved"] as const).map((tab) => (
             <button
+              key={tab}
               type="button"
-              key={post.id}
-              className="relative aspect-square overflow-hidden rounded-lg group"
-              data-ocid={`profile.item.${i + 1}`}
+              onClick={() => setProfileActiveTab(tab)}
+              className="flex-1 py-2.5 text-sm font-medium transition-colors"
+              style={{
+                color:
+                  profileActiveTab === tab
+                    ? "var(--app-accent)"
+                    : "var(--app-text-muted)",
+                borderBottom:
+                  profileActiveTab === tab
+                    ? "2px solid var(--app-accent)"
+                    : "2px solid transparent",
+              }}
+              data-ocid={`profile.${tab}.tab`}
             >
-              <img
-                src={post.image}
-                alt="post"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
-              />
+              {tab === "posts" ? "📷 Posts" : "🔖 Saved"}
             </button>
           ))}
         </div>
+
+        {profileActiveTab === "posts" ? (
+          <div className="grid grid-cols-3 gap-1" data-ocid="profile.list">
+            {profilePosts.map((post, i) => (
+              <button
+                type="button"
+                key={post.id}
+                className="relative aspect-square overflow-hidden rounded-lg group"
+                data-ocid={`profile.item.${i + 1}`}
+              >
+                <img
+                  src={post.image}
+                  alt="post"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                />
+              </button>
+            ))}
+          </div>
+        ) : savedReelsList.length === 0 ? (
+          <div
+            className="flex flex-col items-center justify-center py-16 gap-3"
+            style={{ color: "var(--app-text-muted)" }}
+            data-ocid="profile.saved.empty"
+          >
+            <Bookmark className="w-12 h-12 opacity-30" />
+            <p className="text-sm">कोई saved reel नहीं</p>
+            <p className="text-xs opacity-60">Reels में 🔖 tap करके save करें</p>
+          </div>
+        ) : (
+          <div
+            className="grid grid-cols-3 gap-1"
+            data-ocid="profile.saved.list"
+          >
+            {savedReelsList.map((reel, i) => (
+              <div
+                key={reel.id}
+                className="relative aspect-square overflow-hidden rounded-lg group bg-black"
+                data-ocid={`profile.saved.item.${i + 1}`}
+              >
+                {reel.videoUrl ? (
+                  <video
+                    src={reel.videoUrl}
+                    className="w-full h-full object-cover opacity-80"
+                    muted
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={reel.image}
+                    alt={reel.caption}
+                    className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
+                  />
+                )}
+                <div className="absolute top-1.5 right-1.5">
+                  <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
+                  <p className="text-white text-[10px] leading-tight line-clamp-1">
+                    {reel.caption}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
