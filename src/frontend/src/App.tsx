@@ -1870,6 +1870,7 @@ function HomePage({
   onComment,
   stories,
   onAddStory,
+  followedUsers,
 }: {
   posts: Post[];
   onLike: (id: number) => void;
@@ -1881,14 +1882,16 @@ function HomePage({
     caption?: string;
     mentions: string[];
   }) => void;
+  followedUsers: Set<number>;
 }) {
   const [createStoryOpen, setCreateStoryOpen] = useState(false);
   const [viewingStory, setViewingStory] = useState<Story | null>(null);
 
   const visibleStories = stories.filter((s) => {
     if (s.isCurrentUser) return true;
-    if (!s.createdAt) return true;
-    return Date.now() - s.createdAt.getTime() < 24 * 60 * 60 * 1000;
+    const withinDay =
+      !s.createdAt || Date.now() - s.createdAt.getTime() < 24 * 60 * 60 * 1000;
+    return withinDay && followedUsers.has(s.user.id);
   });
 
   return (
@@ -1960,10 +1963,16 @@ function HomePage({
 
 // ─── SEARCH PAGE ──────────────────────────────────────────────────────────────
 
-function SearchPage() {
+function SearchPage({
+  followedUsers,
+  setFollowedUsers,
+}: {
+  followedUsers: Set<number>;
+  setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+}) {
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"top" | "people" | "tags">("top");
-  const [followed, setFollowed] = useState<Set<number>>(new Set());
+  // followed state is now managed by App (followedUsers/setFollowedUsers)
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
       return JSON.parse(
@@ -2320,13 +2329,15 @@ function SearchPage() {
                   size="sm"
                   className="h-8 px-4 text-xs rounded-full text-white"
                   style={{
-                    backgroundColor: followed.has(user.id)
+                    backgroundColor: followedUsers.has(user.id)
                       ? "var(--app-card)"
                       : "var(--app-accent)",
-                    color: followed.has(user.id) ? "var(--app-text)" : "#fff",
+                    color: followedUsers.has(user.id)
+                      ? "var(--app-text)"
+                      : "#fff",
                   }}
                   onClick={() =>
-                    setFollowed((prev) => {
+                    setFollowedUsers((prev) => {
                       const next = new Set(prev);
                       if (next.has(user.id)) next.delete(user.id);
                       else next.add(user.id);
@@ -2335,7 +2346,7 @@ function SearchPage() {
                   }
                   data-ocid={`search.item.${i + 1}.button`}
                 >
-                  {followed.has(user.id) ? "Following" : "Follow"}
+                  {followedUsers.has(user.id) ? "Following" : "Follow"}
                 </Button>
               </div>
             ),
@@ -3046,10 +3057,14 @@ function NotificationsPage({
   notifications,
   setNotifications,
   onNewNotif,
+  followedUsers,
+  setFollowedUsers,
 }: {
   notifications: Notification[];
   setNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
   onNewNotif?: (n: Notification) => void;
+  followedUsers: Set<number>;
+  setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
 }) {
   const [activeFilter, setActiveFilter] = useState<NotifFilter>("all");
   const [newIds, setNewIds] = useState<Set<number>>(new Set());
@@ -3192,6 +3207,8 @@ function NotificationsPage({
                 notification={n}
                 index={i + 1}
                 isNew={newIds.has(n.id)}
+                followedUsers={followedUsers}
+                setFollowedUsers={setFollowedUsers}
               />
             ))}
           </div>
@@ -3214,6 +3231,8 @@ function NotificationsPage({
                 notification={n}
                 index={unread.length + i + 1}
                 isNew={false}
+                followedUsers={followedUsers}
+                setFollowedUsers={setFollowedUsers}
               />
             ))}
           </div>
@@ -3238,7 +3257,15 @@ function NotificationItem({
   notification: n,
   index,
   isNew = false,
-}: { notification: Notification; index: number; isNew?: boolean }) {
+  followedUsers,
+  setFollowedUsers,
+}: {
+  notification: Notification;
+  index: number;
+  isNew?: boolean;
+  followedUsers: Set<number>;
+  setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+}) {
   const iconColor =
     n.type === "like"
       ? "#E53935"
@@ -3319,11 +3346,27 @@ function NotificationItem({
       {n.type === "follow" && (
         <Button
           size="sm"
-          className="h-8 px-4 text-xs rounded-full text-white flex-shrink-0"
-          style={{ backgroundColor: "var(--app-accent)" }}
+          onClick={() =>
+            setFollowedUsers((prev) => {
+              const next = new Set(prev);
+              if (next.has(n.user.id)) next.delete(n.user.id);
+              else next.add(n.user.id);
+              return next;
+            })
+          }
+          className="h-8 px-4 text-xs rounded-full flex-shrink-0"
+          style={
+            followedUsers.has(n.user.id)
+              ? {
+                  backgroundColor: "var(--app-card)",
+                  color: "var(--app-text)",
+                  border: "1px solid var(--app-border)",
+                }
+              : { backgroundColor: "var(--app-accent)", color: "#fff" }
+          }
           data-ocid={`notifications.item.${index}.button`}
         >
-          Follow
+          {followedUsers.has(n.user.id) ? "Following" : "Follow"}
         </Button>
       )}
     </div>
@@ -5466,6 +5509,9 @@ function CreatePostDialog({
 export default function App() {
   const [activePage, setActivePage] = useState<Page>("home");
   const [darkMode, setDarkMode] = useState(true);
+  const [followedUsers, setFollowedUsers] = useState<Set<number>>(
+    new Set([1, 3, 5]),
+  );
   const [posts, setPosts] = useState<Post[]>(POSTS_INITIAL);
   const { profile, updateProfile } = useProfile();
   const [editProfileOpen, setEditProfileOpen] = useState(false);
@@ -5585,10 +5631,16 @@ export default function App() {
             onComment={handleComment}
             stories={stories}
             onAddStory={handleAddStory}
+            followedUsers={followedUsers}
           />
         );
       case "search":
-        return <SearchPage />;
+        return (
+          <SearchPage
+            followedUsers={followedUsers}
+            setFollowedUsers={setFollowedUsers}
+          />
+        );
       case "reels":
         return <ReelsPage userReels={posts.filter((p) => p.type === "reel")} />;
       case "notifications":
@@ -5600,6 +5652,8 @@ export default function App() {
               setToastNotif(n);
               setShowToast(true);
             }}
+            followedUsers={followedUsers}
+            setFollowedUsers={setFollowedUsers}
           />
         );
       case "chat":
@@ -5627,6 +5681,7 @@ export default function App() {
             onComment={handleComment}
             stories={stories}
             onAddStory={handleAddStory}
+            followedUsers={followedUsers}
           />
         );
     }
