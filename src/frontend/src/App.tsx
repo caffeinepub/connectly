@@ -3151,7 +3151,15 @@ function SearchPage({
 
 // ─── REELS PAGE ───────────────────────────────────────────────────────────────
 
-function ReelsPage({ userReels }: { userReels?: Post[] }) {
+function ReelsPage({
+  userReels,
+  followedUsers,
+  setFollowedUsers,
+}: {
+  userReels?: Post[];
+  followedUsers: Set<number>;
+  setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+}) {
   const [reels, setReels] = useState<Reel[]>(() => {
     const extra: Reel[] = (userReels ?? []).map((p) => ({
       id: p.id,
@@ -3465,11 +3473,26 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
                   </span>
                   <button
                     type="button"
-                    onClick={(e) => e.stopPropagation()}
-                    className="border border-white text-white text-xs px-3 py-0.5 rounded-full pointer-events-auto"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFollowedUsers((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(reel.user.id)) {
+                          next.delete(reel.user.id);
+                        } else {
+                          next.add(reel.user.id);
+                        }
+                        return next;
+                      });
+                    }}
+                    className={`text-xs px-3 py-0.5 rounded-full pointer-events-auto transition-all ${
+                      followedUsers.has(reel.user.id)
+                        ? "bg-white/20 border border-white/50 text-white/80"
+                        : "border border-white text-white"
+                    }`}
                     data-ocid={`reels.item.${i + 1}.button`}
                   >
-                    Follow
+                    {followedUsers.has(reel.user.id) ? "Following" : "Follow"}
                   </button>
                 </div>
                 <p className="text-white text-sm">{reel.caption}</p>
@@ -4602,7 +4625,10 @@ function ProfilePage({
   const [savedPostsFilter, setSavedPostsFilter] = useState<
     "all" | "captioned" | "location" | "mood"
   >("all");
+  const [savedReelsSearch, setSavedReelsSearch] = useState("");
   const [selectedSavedPost, setSelectedSavedPost] = useState<Post | null>(null);
+  const [selectedSavedReel, setSelectedSavedReel] = useState<Reel | null>(null);
+  const [savedReelLiked, setSavedReelLiked] = useState<Set<number>>(new Set());
   const [savedPostLiked, setSavedPostLiked] = useState<Set<number>>(new Set());
   const [selectedTaggedPost, setSelectedTaggedPost] = useState<{
     id: number;
@@ -5346,195 +5372,269 @@ function ProfilePage({
                 </button>
               </div>
 
-              {savedSubTab === "posts" ? (
-                (() => {
-                  const allSavedPosts = posts.filter((p) => p.isBookmarked);
-                  const savedPostsList = allSavedPosts.filter((p) => {
-                    const matchesSearch =
-                      savedPostsSearch === "" ||
-                      p.caption
-                        ?.toLowerCase()
-                        .includes(savedPostsSearch.toLowerCase()) ||
-                      p.location
-                        ?.toLowerCase()
-                        .includes(savedPostsSearch.toLowerCase());
-                    const matchesFilter =
-                      savedPostsFilter === "all" ||
-                      (savedPostsFilter === "captioned" && p.caption) ||
-                      (savedPostsFilter === "location" && p.location) ||
-                      (savedPostsFilter === "mood" && p.mood);
-                    return matchesSearch && matchesFilter;
-                  });
-                  return (
-                    <div>
-                      {allSavedPosts.length > 0 && (
-                        <div className="px-2 pb-3 space-y-2">
-                          <div className="relative">
-                            <input
-                              type="text"
-                              placeholder="Caption या location search करें..."
-                              value={savedPostsSearch}
-                              onChange={(e) =>
-                                setSavedPostsSearch(e.target.value)
-                              }
-                              className="w-full pl-8 pr-3 py-2 text-sm rounded-xl outline-none"
-                              style={{
-                                background: "var(--app-card)",
-                                color: "var(--app-text)",
-                                border: "1px solid var(--app-border)",
-                              }}
-                            />
-                            <svg
-                              aria-hidden="true"
-                              className="absolute left-2.5 top-2.5 w-3.5 h-3.5 opacity-40"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <title>Search</title>
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                              />
-                            </svg>
-                          </div>
-                          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-                            {(
-                              ["all", "captioned", "location", "mood"] as const
-                            ).map((f) => (
-                              <button
-                                key={f}
-                                type="button"
-                                onClick={() => setSavedPostsFilter(f)}
-                                className="flex-shrink-0 px-3 py-1 text-xs rounded-full transition-colors"
+              {savedSubTab === "posts"
+                ? (() => {
+                    const allSavedPosts = posts.filter((p) => p.isBookmarked);
+                    const savedPostsList = allSavedPosts.filter((p) => {
+                      const matchesSearch =
+                        savedPostsSearch === "" ||
+                        p.caption
+                          ?.toLowerCase()
+                          .includes(savedPostsSearch.toLowerCase()) ||
+                        p.location
+                          ?.toLowerCase()
+                          .includes(savedPostsSearch.toLowerCase());
+                      const matchesFilter =
+                        savedPostsFilter === "all" ||
+                        (savedPostsFilter === "captioned" && p.caption) ||
+                        (savedPostsFilter === "location" && p.location) ||
+                        (savedPostsFilter === "mood" && p.mood);
+                      return matchesSearch && matchesFilter;
+                    });
+                    return (
+                      <div>
+                        {allSavedPosts.length > 0 && (
+                          <div className="px-2 pb-3 space-y-2">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Caption या location search करें..."
+                                value={savedPostsSearch}
+                                onChange={(e) =>
+                                  setSavedPostsSearch(e.target.value)
+                                }
+                                className="w-full pl-8 pr-3 py-2 text-sm rounded-xl outline-none"
                                 style={{
-                                  background:
-                                    savedPostsFilter === f
-                                      ? "var(--app-accent)"
-                                      : "var(--app-card)",
-                                  color:
-                                    savedPostsFilter === f
-                                      ? "white"
-                                      : "var(--app-text-muted)",
+                                  background: "var(--app-card)",
+                                  color: "var(--app-text)",
                                   border: "1px solid var(--app-border)",
                                 }}
+                              />
+                              <svg
+                                aria-hidden="true"
+                                className="absolute left-2.5 top-2.5 w-3.5 h-3.5 opacity-40"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
                               >
-                                {f === "all"
-                                  ? "सभी"
-                                  : f === "captioned"
-                                    ? "📝 Caption"
-                                    : f === "location"
-                                      ? "📍 Location"
-                                      : "😊 Mood"}
+                                <title>Search</title>
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                                />
+                              </svg>
+                            </div>
+                            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                              {(
+                                [
+                                  "all",
+                                  "captioned",
+                                  "location",
+                                  "mood",
+                                ] as const
+                              ).map((f) => (
+                                <button
+                                  key={f}
+                                  type="button"
+                                  onClick={() => setSavedPostsFilter(f)}
+                                  className="flex-shrink-0 px-3 py-1 text-xs rounded-full transition-colors"
+                                  style={{
+                                    background:
+                                      savedPostsFilter === f
+                                        ? "var(--app-accent)"
+                                        : "var(--app-card)",
+                                    color:
+                                      savedPostsFilter === f
+                                        ? "white"
+                                        : "var(--app-text-muted)",
+                                    border: "1px solid var(--app-border)",
+                                  }}
+                                >
+                                  {f === "all"
+                                    ? "सभी"
+                                    : f === "captioned"
+                                      ? "📝 Caption"
+                                      : f === "location"
+                                        ? "📍 Location"
+                                        : "😊 Mood"}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {savedPostsList.length === 0 ? (
+                          <div
+                            className="flex flex-col items-center justify-center py-16 gap-3"
+                            style={{ color: "var(--app-text-muted)" }}
+                            data-ocid="profile.saved.posts.empty_state"
+                          >
+                            <Bookmark className="w-12 h-12 opacity-30" />
+                            <p className="text-sm">
+                              {allSavedPosts.length === 0
+                                ? "कोई saved post नहीं"
+                                : "कोई result नहीं"}
+                            </p>
+                            <p className="text-xs opacity-60">
+                              {allSavedPosts.length === 0
+                                ? "Posts में 🔖 tap करके save करें"
+                                : "Search या filter बदलें"}
+                            </p>
+                          </div>
+                        ) : (
+                          <div
+                            className="grid grid-cols-3 gap-1"
+                            data-ocid="profile.saved.posts.list"
+                          >
+                            {savedPostsList.map((post, i) => (
+                              <button
+                                type="button"
+                                key={post.id}
+                                className="relative aspect-square overflow-hidden rounded-lg group"
+                                data-ocid={`profile.saved.item.${i + 1}`}
+                                onClick={() => setSelectedSavedPost(post)}
+                              >
+                                <img
+                                  src={post.image}
+                                  alt="saved post"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                                />
+                                <div className="absolute top-1.5 right-1.5">
+                                  <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                                </div>
+                                {post.caption && (
+                                  <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                    <p className="text-white text-[10px] leading-tight line-clamp-2 text-left">
+                                      {post.caption}
+                                    </p>
+                                  </div>
+                                )}
                               </button>
                             ))}
                           </div>
-                        </div>
-                      )}
-                      {savedPostsList.length === 0 ? (
-                        <div
-                          className="flex flex-col items-center justify-center py-16 gap-3"
-                          style={{ color: "var(--app-text-muted)" }}
-                          data-ocid="profile.saved.posts.empty_state"
-                        >
-                          <Bookmark className="w-12 h-12 opacity-30" />
-                          <p className="text-sm">
-                            {allSavedPosts.length === 0
-                              ? "कोई saved post नहीं"
-                              : "कोई result नहीं"}
-                          </p>
-                          <p className="text-xs opacity-60">
-                            {allSavedPosts.length === 0
-                              ? "Posts में 🔖 tap करके save करें"
-                              : "Search या filter बदलें"}
-                          </p>
-                        </div>
-                      ) : (
-                        <div
-                          className="grid grid-cols-3 gap-1"
-                          data-ocid="profile.saved.posts.list"
-                        >
-                          {savedPostsList.map((post, i) => (
-                            <button
-                              type="button"
-                              key={post.id}
-                              className="relative aspect-square overflow-hidden rounded-lg group"
-                              data-ocid={`profile.saved.item.${i + 1}`}
-                              onClick={() => setSelectedSavedPost(post)}
-                            >
-                              <img
-                                src={post.image}
-                                alt="saved post"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                        )}
+                      </div>
+                    );
+                  })()
+                : (() => {
+                    const filteredSavedReels = savedReelsList.filter(
+                      (r) =>
+                        savedReelsSearch === "" ||
+                        r.caption
+                          ?.toLowerCase()
+                          .includes(savedReelsSearch.toLowerCase()) ||
+                        r.user?.username
+                          ?.toLowerCase()
+                          .includes(savedReelsSearch.toLowerCase()),
+                    );
+                    return (
+                      <div>
+                        {savedReelsList.length > 0 && (
+                          <div className="px-2 pb-3">
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Caption या username search करें..."
+                                value={savedReelsSearch}
+                                onChange={(e) =>
+                                  setSavedReelsSearch(e.target.value)
+                                }
+                                className="w-full pl-8 pr-3 py-2 text-sm rounded-xl outline-none"
+                                style={{
+                                  background: "var(--app-card)",
+                                  color: "var(--app-text)",
+                                  border: "1px solid var(--app-border)",
+                                }}
                               />
-                              <div className="absolute top-1.5 right-1.5">
-                                <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
-                              </div>
-                              {post.caption && (
-                                <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                                  <p className="text-white text-[10px] leading-tight line-clamp-2 text-left">
-                                    {post.caption}
+                              <svg
+                                aria-hidden="true"
+                                className="absolute left-2.5 top-2.5 w-3.5 h-3.5 opacity-40"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <title>Search</title>
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                        )}
+                        {savedReelsList.length === 0 ? (
+                          <div
+                            className="flex flex-col items-center justify-center py-16 gap-3"
+                            style={{ color: "var(--app-text-muted)" }}
+                            data-ocid="profile.saved.reels.empty_state"
+                          >
+                            <Bookmark className="w-12 h-12 opacity-30" />
+                            <p className="text-sm">कोई saved reel नहीं</p>
+                            <p className="text-xs opacity-60">
+                              Reels में 🔖 tap करके save करें
+                            </p>
+                          </div>
+                        ) : filteredSavedReels.length === 0 ? (
+                          <div
+                            className="flex flex-col items-center justify-center py-16 gap-3"
+                            style={{ color: "var(--app-text-muted)" }}
+                          >
+                            <Bookmark className="w-12 h-12 opacity-30" />
+                            <p className="text-sm">कोई result नहीं</p>
+                            <p className="text-xs opacity-60">Search बदलें</p>
+                          </div>
+                        ) : (
+                          <div
+                            className="grid grid-cols-3 gap-1"
+                            data-ocid="profile.saved.reels.list"
+                          >
+                            {filteredSavedReels.map((reel, i) => (
+                              <div
+                                key={reel.id}
+                                className="relative aspect-square overflow-hidden rounded-lg group bg-black cursor-pointer"
+                                data-ocid={`profile.saved.reel.item.${i + 1}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="absolute inset-0 z-10 w-full h-full opacity-0"
+                                  aria-label="View reel"
+                                  onClick={() => setSelectedSavedReel(reel)}
+                                />
+                                {reel.videoUrl ? (
+                                  <video
+                                    src={reel.videoUrl}
+                                    className="w-full h-full object-cover opacity-80"
+                                    muted
+                                    playsInline
+                                  />
+                                ) : (
+                                  <img
+                                    src={reel.image}
+                                    alt={reel.caption}
+                                    className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
+                                  />
+                                )}
+                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                  <Play className="w-8 h-8 text-white fill-white" />
+                                </div>
+                                <div className="absolute top-1.5 right-1.5">
+                                  <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                                </div>
+                                <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
+                                  <p className="text-white text-[10px] leading-tight line-clamp-1">
+                                    {reel.caption}
                                   </p>
                                 </div>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()
-              ) : savedReelsList.length === 0 ? (
-                <div
-                  className="flex flex-col items-center justify-center py-16 gap-3"
-                  style={{ color: "var(--app-text-muted)" }}
-                  data-ocid="profile.saved.reels.empty_state"
-                >
-                  <Bookmark className="w-12 h-12 opacity-30" />
-                  <p className="text-sm">कोई saved reel नहीं</p>
-                  <p className="text-xs opacity-60">
-                    Reels में 🔖 tap करके save करें
-                  </p>
-                </div>
-              ) : (
-                <div
-                  className="grid grid-cols-3 gap-1"
-                  data-ocid="profile.saved.reels.list"
-                >
-                  {savedReelsList.map((reel, i) => (
-                    <div
-                      key={reel.id}
-                      className="relative aspect-square overflow-hidden rounded-lg group bg-black"
-                      data-ocid={`profile.saved.reel.item.${i + 1}`}
-                    >
-                      {reel.videoUrl ? (
-                        <video
-                          src={reel.videoUrl}
-                          className="w-full h-full object-cover opacity-80"
-                          muted
-                          playsInline
-                        />
-                      ) : (
-                        <img
-                          src={reel.image}
-                          alt={reel.caption}
-                          className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
-                        />
-                      )}
-                      <div className="absolute top-1.5 right-1.5">
-                        <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
-                        <p className="text-white text-[10px] leading-tight line-clamp-1">
-                          {reel.caption}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    );
+                  })()}
             </div>
           ) : (
             <div
@@ -6417,6 +6517,104 @@ function ProfilePage({
           </div>
         )}
       </div>
+      {selectedSavedReel && (
+        <div
+          className="fixed inset-0 z-[200] bg-black flex flex-col"
+          data-ocid="profile.saved.reel.viewer"
+        >
+          <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm">
+            <button
+              type="button"
+              onClick={() => setSelectedSavedReel(null)}
+              className="text-white p-1"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <span className="text-white font-semibold text-sm">Saved Reel</span>
+            <div className="w-8" />
+          </div>
+          <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
+            {selectedSavedReel.videoUrl ? (
+              <video
+                src={selectedSavedReel.videoUrl}
+                className="w-full h-full object-contain max-h-[calc(100vh-160px)]"
+                autoPlay
+                loop
+                playsInline
+                controls
+              >
+                <track kind="captions" />
+              </video>
+            ) : (
+              <img
+                src={selectedSavedReel.image}
+                alt={selectedSavedReel.caption}
+                className="w-full h-full object-contain max-h-[calc(100vh-160px)]"
+              />
+            )}
+            <div className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-gradient-to-t from-black/80 to-transparent">
+              <div className="flex items-center gap-2 mb-2">
+                <img
+                  src={selectedSavedReel.user.avatar}
+                  alt={selectedSavedReel.user.name}
+                  className="w-8 h-8 rounded-full border-2 border-white object-cover"
+                />
+                <span className="text-white font-semibold text-sm">
+                  {selectedSavedReel.user.username}
+                </span>
+              </div>
+              {selectedSavedReel.caption && (
+                <p className="text-white/90 text-sm line-clamp-2">
+                  {selectedSavedReel.caption}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-around px-6 py-4 bg-black/90 border-t border-white/10">
+            <button
+              type="button"
+              className={`flex flex-col items-center gap-1 text-xs font-medium transition-colors ${savedReelLiked.has(selectedSavedReel.id) ? "text-red-400" : "text-white/70"}`}
+              onClick={() =>
+                setSavedReelLiked((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(selectedSavedReel.id))
+                    next.delete(selectedSavedReel.id);
+                  else next.add(selectedSavedReel.id);
+                  return next;
+                })
+              }
+            >
+              <Heart
+                className="w-6 h-6"
+                fill={
+                  savedReelLiked.has(selectedSavedReel.id)
+                    ? "currentColor"
+                    : "none"
+                }
+              />
+              <span>
+                {savedReelLiked.has(selectedSavedReel.id)
+                  ? selectedSavedReel.likes + 1
+                  : selectedSavedReel.likes}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="flex flex-col items-center gap-1 text-xs font-medium text-white/70"
+            >
+              <MessageCircle className="w-6 h-6" />
+              <span>{selectedSavedReel.comments}</span>
+            </button>
+            <button
+              type="button"
+              className="flex flex-col items-center gap-1 text-xs font-medium text-yellow-400"
+            >
+              <Bookmark className="w-6 h-6 fill-yellow-400" />
+              <span>Saved</span>
+            </button>
+          </div>
+        </div>
+      )}
       <ShareToFriendModal
         open={showOwnProfileShareModal}
         onClose={() => setShowOwnProfileShareModal(false)}
@@ -9034,7 +9232,13 @@ export default function App() {
           />
         );
       case "reels":
-        return <ReelsPage userReels={posts.filter((p) => p.type === "reel")} />;
+        return (
+          <ReelsPage
+            userReels={posts.filter((p) => p.type === "reel")}
+            followedUsers={followedUsers}
+            setFollowedUsers={setFollowedUsers}
+          />
+        );
       case "notifications":
         return (
           <NotificationsPage
