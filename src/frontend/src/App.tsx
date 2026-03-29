@@ -103,6 +103,8 @@ interface Post {
   time: string;
   isLiked?: boolean;
   isBookmarked?: boolean;
+  location?: string;
+  mood?: string;
 }
 
 interface Story {
@@ -272,7 +274,7 @@ function EditProfileDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 mt-2">
+        <div className="flex flex-col gap-4 mt-2 overflow-y-auto max-h-[80vh] pr-1">
           {/* Avatar picker */}
           <div className="flex justify-center">
             <button
@@ -1933,6 +1935,26 @@ function PostCard({
         <p className="text-sm" style={{ color: "var(--app-text)" }}>
           <span className="font-bold">{post.user.username}</span> {post.caption}
         </p>
+        {(post.location || post.mood) && (
+          <div className="flex flex-wrap gap-2 mt-0.5">
+            {post.location && (
+              <span
+                className="text-xs"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                📍 {post.location}
+              </span>
+            )}
+            {post.mood && (
+              <span
+                className="text-xs"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                {post.mood}
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-sm mt-0.5" style={{ color: "var(--app-accent)" }}>
           {post.hashtags.join(" ")}
         </p>
@@ -3146,13 +3168,68 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
   const [soundOn, setSoundOn] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [commentReelId, setCommentReelId] = useState<number | null>(null);
-  const [reelComments, setReelComments] = useState<Record<number, string[]>>({
-    1: ["Love the energy! 🔥", "This is so inspiring!", "Goals 💪"],
-    2: ["Paradise found 🌴", "I need to go here!", "So beautiful 😍"],
-    3: ["Stunning view! ⛰️", "Nature at its best", "Breathtaking 🌅"],
-    4: ["Amazing skills!", "Tutorial please?", "🙌🙌🙌"],
-    5: ["Made this at home!", "Recipe please 🍕", "Looks delicious!"],
+  type ReelComment = {
+    id: number;
+    user: string;
+    text: string;
+    replies: { id: number; user: string; text: string }[];
+  };
+  const [reelComments, setReelComments] = useState<
+    Record<number, ReelComment[]>
+  >({
+    1: [
+      { id: 1, user: "priya_s", text: "Love the energy! 🔥", replies: [] },
+      {
+        id: 2,
+        user: "arjun_v",
+        text: "This is so inspiring!",
+        replies: [{ id: 3, user: "mehak_k", text: "Totally agree! 💯" }],
+      },
+      { id: 4, user: "rahul_d", text: "Goals 💪", replies: [] },
+    ],
+    2: [
+      { id: 5, user: "sneha_r", text: "Paradise found 🌴", replies: [] },
+      {
+        id: 6,
+        user: "karan_m",
+        text: "I need to go here!",
+        replies: [
+          { id: 7, user: "priya_s", text: "Same! Let's plan a trip 🌊" },
+        ],
+      },
+      { id: 8, user: "ananya_b", text: "So beautiful 😍", replies: [] },
+    ],
+    3: [
+      { id: 9, user: "vikram_s", text: "Stunning view! ⛰️", replies: [] },
+      { id: 10, user: "nisha_p", text: "Nature at its best", replies: [] },
+      { id: 11, user: "rohit_k", text: "Breathtaking 🌅", replies: [] },
+    ],
+    4: [
+      {
+        id: 12,
+        user: "divya_m",
+        text: "Amazing skills!",
+        replies: [{ id: 13, user: "arjun_v", text: "Tutorial please!! 🙏" }],
+      },
+      { id: 14, user: "aditya_r", text: "🙌🙌🙌", replies: [] },
+    ],
+    5: [
+      { id: 15, user: "pooja_s", text: "Made this at home!", replies: [] },
+      {
+        id: 16,
+        user: "nikhil_g",
+        text: "Recipe please 🍕",
+        replies: [{ id: 17, user: "pooja_s", text: "Will post it soon!" }],
+      },
+      { id: 18, user: "kavya_n", text: "Looks delicious!", replies: [] },
+    ],
   });
+  const [reelReplyTo, setReelReplyTo] = useState<{
+    reelId: number;
+    commentId: number;
+    username: string;
+  } | null>(null);
+  const reelCommentNextId = useRef(100);
   const [commentInput, setCommentInput] = useState("");
   const [savedReels, setSavedReels] = useState<Set<number>>(
     () =>
@@ -3245,11 +3322,30 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
 
   function handleSendComment() {
     if (!commentInput.trim() || commentReelId === null) return;
-    setReelComments((prev) => ({
-      ...prev,
-      [commentReelId]: [...(prev[commentReelId] ?? []), commentInput.trim()],
-    }));
-    setReelComments((prev) => prev);
+    const text = commentInput.trim();
+    const newId = reelCommentNextId.current++;
+    if (reelReplyTo && reelReplyTo.reelId === commentReelId) {
+      setReelComments((prev) => ({
+        ...prev,
+        [commentReelId]: (prev[commentReelId] ?? []).map((c) =>
+          c.id === reelReplyTo.commentId
+            ? {
+                ...c,
+                replies: [...c.replies, { id: newId, user: "you", text }],
+              }
+            : c,
+        ),
+      }));
+      setReelReplyTo(null);
+    } else {
+      setReelComments((prev) => ({
+        ...prev,
+        [commentReelId]: [
+          ...(prev[commentReelId] ?? []),
+          { id: newId, user: "you", text, replies: [] },
+        ],
+      }));
+    }
     setCommentInput("");
     setReels((prev) =>
       prev.map((r) =>
@@ -3536,20 +3632,79 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto space-y-3 mb-3 min-h-0">
-              {(reelComments[commentReelId] ?? []).map((c, idx) => (
-                <div
-                  key={`comment-${idx}-${c.slice(0, 5)}`}
-                  className="flex items-start gap-2"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-violet-500 flex-shrink-0" />
-                  <div>
-                    <span className="text-xs font-semibold dark:text-white">
-                      user_{idx + 1}{" "}
-                    </span>
-                    <span className="text-xs text-zinc-600 dark:text-zinc-300">
-                      {c}
-                    </span>
+              {(reelComments[commentReelId] ?? []).map((c) => (
+                <div key={`comment-${c.id}`} className="space-y-2">
+                  {/* Top-level comment */}
+                  <div className="flex items-start gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-violet-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">
+                      {c.user[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div>
+                        <span className="text-xs font-semibold dark:text-white">
+                          @{c.user}{" "}
+                        </span>
+                        <span className="text-xs text-zinc-600 dark:text-zinc-300">
+                          {c.text}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReelReplyTo({
+                            reelId: commentReelId,
+                            commentId: c.id,
+                            username: c.user,
+                          });
+                          setCommentInput(`@${c.user} `);
+                        }}
+                        className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5 hover:text-blue-500 transition-colors font-medium"
+                        data-ocid="reels.secondary_button"
+                      >
+                        Reply
+                      </button>
+                    </div>
                   </div>
+                  {/* Nested replies */}
+                  {c.replies.length > 0 && (
+                    <div className="ml-10 space-y-2">
+                      {c.replies.map((r) => (
+                        <div
+                          key={`reply-${r.id}`}
+                          className="flex items-start gap-2"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-400 to-cyan-500 flex-shrink-0 flex items-center justify-center text-white text-[10px] font-bold">
+                            {r.user[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div>
+                              <span className="text-xs font-semibold dark:text-white">
+                                @{r.user}{" "}
+                              </span>
+                              <span className="text-xs text-zinc-600 dark:text-zinc-300">
+                                {r.text}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReelReplyTo({
+                                  reelId: commentReelId,
+                                  commentId: c.id,
+                                  username: r.user,
+                                });
+                                setCommentInput(`@${r.user} `);
+                              }}
+                              className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5 hover:text-blue-500 transition-colors font-medium"
+                              data-ocid="reels.secondary_button"
+                            >
+                              Reply
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {(reelComments[commentReelId] ?? []).length === 0 && (
@@ -3561,12 +3716,36 @@ function ReelsPage({ userReels }: { userReels?: Post[] }) {
                 </p>
               )}
             </div>
+            {/* Reply-to indicator */}
+            {reelReplyTo && reelReplyTo.reelId === commentReelId && (
+              <div className="flex items-center justify-between px-2 py-1.5 mb-1 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50">
+                <span className="text-xs text-blue-500 dark:text-blue-400">
+                  Replying to{" "}
+                  <span className="font-semibold">@{reelReplyTo.username}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReelReplyTo(null);
+                    setCommentInput("");
+                  }}
+                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 ml-2"
+                  data-ocid="reels.close_button"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2 border-t dark:border-zinc-700 pt-3">
               <input
                 value={commentInput}
                 onChange={(e) => setCommentInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSendComment()}
-                placeholder="Add a comment..."
+                placeholder={
+                  reelReplyTo
+                    ? `Reply to @${reelReplyTo.username}...`
+                    : "Add a comment..."
+                }
                 className="flex-1 text-sm bg-zinc-100 dark:bg-zinc-800 dark:text-white rounded-full px-4 py-2 outline-none"
                 data-ocid="reels.input"
               />
@@ -4393,6 +4572,8 @@ function ProfilePage({
   onEditProfile,
   followedUsers,
   onToggleFollow,
+  posts,
+  onBookmark,
 }: {
   darkMode: boolean;
   onToggleDark: () => void;
@@ -4403,6 +4584,8 @@ function ProfilePage({
   onEditProfile: () => void;
   followedUsers: Set<number>;
   onToggleFollow: (id: number) => void;
+  posts: Post[];
+  onBookmark: (id: number) => void;
 }) {
   const [isPrivate, setIsPrivate] = useState(CURRENT_USER.isPrivate);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
@@ -4414,6 +4597,13 @@ function ProfilePage({
   const [profileActiveTab, setProfileActiveTab] = useState<
     "posts" | "saved" | "tagged"
   >("posts");
+  const [savedSubTab, setSavedSubTab] = useState<"posts" | "reels">("posts");
+  const [savedPostsSearch, setSavedPostsSearch] = useState("");
+  const [savedPostsFilter, setSavedPostsFilter] = useState<
+    "all" | "captioned" | "location" | "mood"
+  >("all");
+  const [selectedSavedPost, setSelectedSavedPost] = useState<Post | null>(null);
+  const [savedPostLiked, setSavedPostLiked] = useState<Set<number>>(new Set());
   const [selectedTaggedPost, setSelectedTaggedPost] = useState<{
     id: number;
     image: string;
@@ -4424,18 +4614,52 @@ function ProfilePage({
     id: number;
     image: string;
     caption?: string;
+    location?: string;
+    mood?: string;
   } | null>(null);
   const [profilePostLiked, setProfilePostLiked] = useState<Set<number>>(
     new Set(),
   );
   const [profilePostCommentInput, setProfilePostCommentInput] = useState("");
   const [profilePostComments, setProfilePostComments] = useState<
-    Record<number, string[]>
+    Record<
+      number,
+      {
+        id: number;
+        text: string;
+        username: string;
+        replies: { id: number; text: string; username: string }[];
+      }[]
+    >
+  >({});
+  const [profilePostReplyingTo, setProfilePostReplyingTo] = useState<
+    number | null
+  >(null);
+  const [profilePostReplyInputs, setProfilePostReplyInputs] = useState<
+    Record<number, string>
+  >({});
+  const [profilePostExpandedReplies, setProfilePostExpandedReplies] = useState<
+    Record<number, boolean>
   >({});
   const [taggedLiked, setTaggedLiked] = useState<Set<number>>(new Set());
   const [taggedCommentInput, setTaggedCommentInput] = useState("");
   const [taggedComments, setTaggedComments] = useState<
-    Record<number, string[]>
+    Record<
+      number,
+      {
+        id: number;
+        text: string;
+        username: string;
+        replies: { id: number; text: string; username: string }[];
+      }[]
+    >
+  >({});
+  const [taggedReplyingTo, setTaggedReplyingTo] = useState<number | null>(null);
+  const [taggedReplyInputs, setTaggedReplyInputs] = useState<
+    Record<number, string>
+  >({});
+  const [taggedExpandedReplies, setTaggedExpandedReplies] = useState<
+    Record<number, boolean>
   >({});
   const savedReelIds: number[] = JSON.parse(
     localStorage.getItem("connectly_saved_reels") || "[]",
@@ -5078,53 +5302,240 @@ function ProfilePage({
               ))}
             </div>
           ) : profileActiveTab === "saved" ? (
-            savedReelsList.length === 0 ? (
+            <div className="flex flex-col gap-3">
+              {/* Sub-tabs: Posts / Reels */}
               <div
-                className="flex flex-col items-center justify-center py-16 gap-3"
-                style={{ color: "var(--app-text-muted)" }}
-                data-ocid="profile.saved.empty"
+                className="flex rounded-lg overflow-hidden border border-border"
+                style={{ backgroundColor: "var(--app-card)" }}
               >
-                <Bookmark className="w-12 h-12 opacity-30" />
-                <p className="text-sm">कोई saved reel नहीं</p>
-                <p className="text-xs opacity-60">Reels में 🔖 tap करके save करें</p>
+                <button
+                  type="button"
+                  onClick={() => setSavedSubTab("posts")}
+                  className="flex-1 py-2 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor:
+                      savedSubTab === "posts"
+                        ? "var(--app-accent)"
+                        : "transparent",
+                    color:
+                      savedSubTab === "posts"
+                        ? "white"
+                        : "var(--app-text-muted)",
+                  }}
+                  data-ocid="profile.saved.posts.tab"
+                >
+                  🖼️ Saved Posts
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSavedSubTab("reels")}
+                  className="flex-1 py-2 text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor:
+                      savedSubTab === "reels"
+                        ? "var(--app-accent)"
+                        : "transparent",
+                    color:
+                      savedSubTab === "reels"
+                        ? "white"
+                        : "var(--app-text-muted)",
+                  }}
+                  data-ocid="profile.saved.reels.tab"
+                >
+                  🎬 Saved Reels
+                </button>
               </div>
-            ) : (
-              <div
-                className="grid grid-cols-3 gap-1"
-                data-ocid="profile.saved.list"
-              >
-                {savedReelsList.map((reel, i) => (
-                  <div
-                    key={reel.id}
-                    className="relative aspect-square overflow-hidden rounded-lg group bg-black"
-                    data-ocid={`profile.saved.item.${i + 1}`}
-                  >
-                    {reel.videoUrl ? (
-                      <video
-                        src={reel.videoUrl}
-                        className="w-full h-full object-cover opacity-80"
-                        muted
-                        playsInline
-                      />
-                    ) : (
-                      <img
-                        src={reel.image}
-                        alt={reel.caption}
-                        className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
-                      />
-                    )}
-                    <div className="absolute top-1.5 right-1.5">
-                      <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+
+              {savedSubTab === "posts" ? (
+                (() => {
+                  const allSavedPosts = posts.filter((p) => p.isBookmarked);
+                  const savedPostsList = allSavedPosts.filter((p) => {
+                    const matchesSearch =
+                      savedPostsSearch === "" ||
+                      p.caption
+                        ?.toLowerCase()
+                        .includes(savedPostsSearch.toLowerCase()) ||
+                      p.location
+                        ?.toLowerCase()
+                        .includes(savedPostsSearch.toLowerCase());
+                    const matchesFilter =
+                      savedPostsFilter === "all" ||
+                      (savedPostsFilter === "captioned" && p.caption) ||
+                      (savedPostsFilter === "location" && p.location) ||
+                      (savedPostsFilter === "mood" && p.mood);
+                    return matchesSearch && matchesFilter;
+                  });
+                  return (
+                    <div>
+                      {allSavedPosts.length > 0 && (
+                        <div className="px-2 pb-3 space-y-2">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              placeholder="Caption या location search करें..."
+                              value={savedPostsSearch}
+                              onChange={(e) =>
+                                setSavedPostsSearch(e.target.value)
+                              }
+                              className="w-full pl-8 pr-3 py-2 text-sm rounded-xl outline-none"
+                              style={{
+                                background: "var(--app-card)",
+                                color: "var(--app-text)",
+                                border: "1px solid var(--app-border)",
+                              }}
+                            />
+                            <svg
+                              aria-hidden="true"
+                              className="absolute left-2.5 top-2.5 w-3.5 h-3.5 opacity-40"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <title>Search</title>
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                              />
+                            </svg>
+                          </div>
+                          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                            {(
+                              ["all", "captioned", "location", "mood"] as const
+                            ).map((f) => (
+                              <button
+                                key={f}
+                                type="button"
+                                onClick={() => setSavedPostsFilter(f)}
+                                className="flex-shrink-0 px-3 py-1 text-xs rounded-full transition-colors"
+                                style={{
+                                  background:
+                                    savedPostsFilter === f
+                                      ? "var(--app-accent)"
+                                      : "var(--app-card)",
+                                  color:
+                                    savedPostsFilter === f
+                                      ? "white"
+                                      : "var(--app-text-muted)",
+                                  border: "1px solid var(--app-border)",
+                                }}
+                              >
+                                {f === "all"
+                                  ? "सभी"
+                                  : f === "captioned"
+                                    ? "📝 Caption"
+                                    : f === "location"
+                                      ? "📍 Location"
+                                      : "😊 Mood"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {savedPostsList.length === 0 ? (
+                        <div
+                          className="flex flex-col items-center justify-center py-16 gap-3"
+                          style={{ color: "var(--app-text-muted)" }}
+                          data-ocid="profile.saved.posts.empty_state"
+                        >
+                          <Bookmark className="w-12 h-12 opacity-30" />
+                          <p className="text-sm">
+                            {allSavedPosts.length === 0
+                              ? "कोई saved post नहीं"
+                              : "कोई result नहीं"}
+                          </p>
+                          <p className="text-xs opacity-60">
+                            {allSavedPosts.length === 0
+                              ? "Posts में 🔖 tap करके save करें"
+                              : "Search या filter बदलें"}
+                          </p>
+                        </div>
+                      ) : (
+                        <div
+                          className="grid grid-cols-3 gap-1"
+                          data-ocid="profile.saved.posts.list"
+                        >
+                          {savedPostsList.map((post, i) => (
+                            <button
+                              type="button"
+                              key={post.id}
+                              className="relative aspect-square overflow-hidden rounded-lg group"
+                              data-ocid={`profile.saved.item.${i + 1}`}
+                              onClick={() => setSelectedSavedPost(post)}
+                            >
+                              <img
+                                src={post.image}
+                                alt="saved post"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
+                              />
+                              <div className="absolute top-1.5 right-1.5">
+                                <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                              </div>
+                              {post.caption && (
+                                <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                                  <p className="text-white text-[10px] leading-tight line-clamp-2 text-left">
+                                    {post.caption}
+                                  </p>
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
-                      <p className="text-white text-[10px] leading-tight line-clamp-1">
-                        {reel.caption}
-                      </p>
+                  );
+                })()
+              ) : savedReelsList.length === 0 ? (
+                <div
+                  className="flex flex-col items-center justify-center py-16 gap-3"
+                  style={{ color: "var(--app-text-muted)" }}
+                  data-ocid="profile.saved.reels.empty_state"
+                >
+                  <Bookmark className="w-12 h-12 opacity-30" />
+                  <p className="text-sm">कोई saved reel नहीं</p>
+                  <p className="text-xs opacity-60">
+                    Reels में 🔖 tap करके save करें
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="grid grid-cols-3 gap-1"
+                  data-ocid="profile.saved.reels.list"
+                >
+                  {savedReelsList.map((reel, i) => (
+                    <div
+                      key={reel.id}
+                      className="relative aspect-square overflow-hidden rounded-lg group bg-black"
+                      data-ocid={`profile.saved.reel.item.${i + 1}`}
+                    >
+                      {reel.videoUrl ? (
+                        <video
+                          src={reel.videoUrl}
+                          className="w-full h-full object-cover opacity-80"
+                          muted
+                          playsInline
+                        />
+                      ) : (
+                        <img
+                          src={reel.image}
+                          alt={reel.caption}
+                          className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-150"
+                        />
+                      )}
+                      <div className="absolute top-1.5 right-1.5">
+                        <Bookmark className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4 bg-gradient-to-t from-black/60 to-transparent">
+                        <p className="text-white text-[10px] leading-tight line-clamp-1">
+                          {reel.caption}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             <div
               className="grid grid-cols-3 gap-1"
@@ -5194,14 +5605,36 @@ function ProfilePage({
                 alt="post"
                 className="w-full aspect-square object-cover"
               />
-              {selectedProfilePost.caption && (
+              {(selectedProfilePost.caption ||
+                selectedProfilePost.location ||
+                selectedProfilePost.mood) && (
                 <div className="px-4 py-2 border-b border-border">
-                  <p className="text-sm" style={{ color: "var(--app-text)" }}>
-                    <span className="font-semibold mr-1">
-                      {profile.username}
-                    </span>
-                    {selectedProfilePost.caption}
-                  </p>
+                  {selectedProfilePost.caption && (
+                    <p className="text-sm" style={{ color: "var(--app-text)" }}>
+                      <span className="font-semibold mr-1">
+                        {profile.username}
+                      </span>
+                      {selectedProfilePost.caption}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {selectedProfilePost.location && (
+                      <span
+                        className="text-xs"
+                        style={{ color: "var(--app-text-muted)" }}
+                      >
+                        📍 {selectedProfilePost.location}
+                      </span>
+                    )}
+                    {selectedProfilePost.mood && (
+                      <span
+                        className="text-xs"
+                        style={{ color: "var(--app-text-muted)" }}
+                      >
+                        {selectedProfilePost.mood}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
               <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
@@ -5253,31 +5686,195 @@ function ProfilePage({
                   <span>📤</span>
                 </button>
               </div>
-              <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">priya_k</span>{" "}
-                  Beautiful! ✨
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">
-                    rahul_dev
-                  </span>{" "}
-                  🔥🔥
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">neha_s</span>{" "}
-                  Love this vibe 😍
-                </p>
-                {(profilePostComments[selectedProfilePost.id] || []).map(
-                  (c) => (
-                    <p key={c} className="text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">
-                        {profile.username}
-                      </span>{" "}
-                      {c}
-                    </p>
-                  ),
-                )}
+              <div className="px-4 py-2 max-h-48 overflow-y-auto space-y-2">
+                {[
+                  {
+                    id: -1,
+                    text: "Beautiful! ✨",
+                    username: "priya_k",
+                    replies: [],
+                  },
+                  { id: -2, text: "🔥🔥", username: "rahul_dev", replies: [] },
+                  {
+                    id: -3,
+                    text: "Love this vibe 😍",
+                    username: "neha_s",
+                    replies: [],
+                  },
+                  ...(profilePostComments[selectedProfilePost.id] || []),
+                ].map((c) => (
+                  <div key={c.id} className="flex flex-col gap-0.5">
+                    <div className="flex gap-1 items-start flex-wrap">
+                      <span className="text-xs font-semibold text-foreground">
+                        {c.username}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {c.text}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (profilePostReplyingTo === c.id) {
+                            setProfilePostReplyingTo(null);
+                          } else {
+                            setProfilePostReplyingTo(c.id);
+                            setProfilePostReplyInputs((prev) => ({
+                              ...prev,
+                              [c.id]: `@${c.username} `,
+                            }));
+                          }
+                        }}
+                        className="text-[10px] font-medium text-muted-foreground leading-none"
+                      >
+                        {profilePostReplyingTo === c.id ? "Cancel" : "Reply"}
+                      </button>
+                      {c.replies.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProfilePostExpandedReplies((prev) => ({
+                              ...prev,
+                              [c.id]: !prev[c.id],
+                            }))
+                          }
+                          className="text-[10px] font-medium text-primary leading-none"
+                        >
+                          {profilePostExpandedReplies[c.id]
+                            ? "Hide replies"
+                            : `View ${c.replies.length} ${c.replies.length === 1 ? "reply" : "replies"}`}
+                        </button>
+                      )}
+                    </div>
+                    {profilePostExpandedReplies[c.id] &&
+                      c.replies.length > 0 && (
+                        <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-3">
+                          {c.replies.map((r) => (
+                            <div key={r.id} className="flex flex-col gap-0.5">
+                              <div className="flex gap-1 items-start flex-wrap">
+                                <span className="text-xs font-semibold text-foreground">
+                                  {r.username}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {r.text}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProfilePostReplyingTo(c.id);
+                                  setProfilePostReplyInputs((prev) => ({
+                                    ...prev,
+                                    [c.id]: `@${r.username} `,
+                                  }));
+                                }}
+                                className="text-[10px] font-medium text-muted-foreground leading-none self-start"
+                              >
+                                Reply
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    {profilePostReplyingTo === c.id && (
+                      <div className="ml-4 mt-1 flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={profilePostReplyInputs[c.id] ?? ""}
+                          onChange={(e) =>
+                            setProfilePostReplyInputs((prev) => ({
+                              ...prev,
+                              [c.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const text = profilePostReplyInputs[c.id]?.trim();
+                              if (text && selectedProfilePost) {
+                                setProfilePostComments((prev) => {
+                                  const list =
+                                    prev[selectedProfilePost.id] || [];
+                                  return {
+                                    ...prev,
+                                    [selectedProfilePost.id]: list.map((cm) =>
+                                      cm.id === c.id
+                                        ? {
+                                            ...cm,
+                                            replies: [
+                                              ...cm.replies,
+                                              {
+                                                id: Date.now(),
+                                                text,
+                                                username: profile.username,
+                                              },
+                                            ],
+                                          }
+                                        : cm,
+                                    ),
+                                  };
+                                });
+                                setProfilePostReplyInputs((prev) => ({
+                                  ...prev,
+                                  [c.id]: "",
+                                }));
+                                setProfilePostReplyingTo(null);
+                                setProfilePostExpandedReplies((prev) => ({
+                                  ...prev,
+                                  [c.id]: true,
+                                }));
+                              }
+                            }
+                          }}
+                          placeholder={`Reply to @${c.username}...`}
+                          className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground"
+                        />
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-primary disabled:opacity-40"
+                          disabled={!profilePostReplyInputs[c.id]?.trim()}
+                          onClick={() => {
+                            const text = profilePostReplyInputs[c.id]?.trim();
+                            if (text && selectedProfilePost) {
+                              setProfilePostComments((prev) => {
+                                const list = prev[selectedProfilePost.id] || [];
+                                return {
+                                  ...prev,
+                                  [selectedProfilePost.id]: list.map((cm) =>
+                                    cm.id === c.id
+                                      ? {
+                                          ...cm,
+                                          replies: [
+                                            ...cm.replies,
+                                            {
+                                              id: Date.now(),
+                                              text,
+                                              username: profile.username,
+                                            },
+                                          ],
+                                        }
+                                      : cm,
+                                  ),
+                                };
+                              });
+                              setProfilePostReplyInputs((prev) => ({
+                                ...prev,
+                                [c.id]: "",
+                              }));
+                              setProfilePostReplyingTo(null);
+                              setProfilePostExpandedReplies((prev) => ({
+                                ...prev,
+                                [c.id]: true,
+                              }));
+                            }
+                          }}
+                        >
+                          Send
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
               <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
                 <input
@@ -5296,7 +5893,12 @@ function ProfilePage({
                         ...prev,
                         [selectedProfilePost.id]: [
                           ...(prev[selectedProfilePost.id] || []),
-                          profilePostCommentInput.trim(),
+                          {
+                            id: Date.now(),
+                            text: profilePostCommentInput.trim(),
+                            username: profile.username,
+                            replies: [],
+                          },
                         ],
                       }));
                       setProfilePostCommentInput("");
@@ -5315,7 +5917,12 @@ function ProfilePage({
                         ...prev,
                         [selectedProfilePost.id]: [
                           ...(prev[selectedProfilePost.id] || []),
-                          profilePostCommentInput.trim(),
+                          {
+                            id: Date.now(),
+                            text: profilePostCommentInput.trim(),
+                            username: profile.username,
+                            replies: [],
+                          },
                         ],
                       }));
                       setProfilePostCommentInput("");
@@ -5324,6 +5931,141 @@ function ProfilePage({
                   data-ocid="profile.post.send"
                 >
                   Send
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedSavedPost && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            data-ocid="profile.saved.post.modal"
+          >
+            <button
+              type="button"
+              aria-label="Close"
+              className="absolute inset-0 w-full h-full cursor-default"
+              onClick={() => setSelectedSavedPost(null)}
+            />
+            <div
+              className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-white dark:bg-zinc-900 shadow-2xl z-10"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <Avatar className="w-7 h-7">
+                    <AvatarImage
+                      src={selectedSavedPost.user.avatar}
+                      alt={selectedSavedPost.user.name}
+                    />
+                    <AvatarFallback>
+                      {selectedSavedPost.user.name[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-semibold text-sm">
+                    {selectedSavedPost.user.username}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setSelectedSavedPost(null)}
+                  data-ocid="profile.saved.post.close_button"
+                >
+                  ✕
+                </button>
+              </div>
+              <img
+                src={selectedSavedPost.image}
+                alt="saved post"
+                className="w-full aspect-square object-cover"
+              />
+              {selectedSavedPost.caption && (
+                <div className="px-4 py-2 border-b border-border">
+                  <p className="text-sm" style={{ color: "var(--app-text)" }}>
+                    <span className="font-semibold mr-1">
+                      {selectedSavedPost.user.username}
+                    </span>
+                    {selectedSavedPost.caption}
+                  </p>
+                  {(selectedSavedPost.location || selectedSavedPost.mood) && (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {selectedSavedPost.location && (
+                        <span
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          📍 {selectedSavedPost.location}
+                        </span>
+                      )}
+                      {selectedSavedPost.mood && (
+                        <span
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          {selectedSavedPost.mood}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex items-center gap-4 px-4 py-3">
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${savedPostLiked.has(selectedSavedPost.id) ? "text-red-500" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() =>
+                    setSavedPostLiked((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(selectedSavedPost.id))
+                        next.delete(selectedSavedPost.id);
+                      else next.add(selectedSavedPost.id);
+                      return next;
+                    })
+                  }
+                  data-ocid="profile.saved.post.like_button"
+                >
+                  <Heart
+                    className="w-4 h-4"
+                    fill={
+                      savedPostLiked.has(selectedSavedPost.id)
+                        ? "currentColor"
+                        : "none"
+                    }
+                  />
+                  {savedPostLiked.has(selectedSavedPost.id)
+                    ? selectedSavedPost.likes + 1
+                    : selectedSavedPost.likes}
+                </button>
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${selectedSavedPost.isBookmarked ? "text-yellow-500" : "text-muted-foreground hover:text-foreground"}`}
+                  onClick={() => onBookmark(selectedSavedPost.id)}
+                  data-ocid="profile.saved.post.save_button"
+                >
+                  <Bookmark
+                    className="w-4 h-4"
+                    fill={
+                      selectedSavedPost.isBookmarked ? "currentColor" : "none"
+                    }
+                  />
+                  {selectedSavedPost.isBookmarked ? "Saved" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                  onClick={() => {
+                    const link = document.createElement("a");
+                    link.href = selectedSavedPost.image;
+                    link.download = "post.jpg";
+                    link.click();
+                  }}
+                  data-ocid="profile.saved.post.download_button"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
                 </button>
               </div>
             </div>
@@ -5413,32 +6155,204 @@ function ProfilePage({
                 </button>
               </div>
               {/* Comments */}
-              <div className="px-4 py-2 max-h-32 overflow-y-auto space-y-1">
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">
-                    rahul_dev
-                  </span>{" "}
-                  Great shot! 🔥
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">priya_k</span>{" "}
-                  Love this ✨
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">
-                    amit_photo
-                  </span>{" "}
-                  Amazing vibes 😍
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">neha_s</span>{" "}
-                  So good! 🙌
-                </p>
-                {(taggedComments[selectedTaggedPost.id] || []).map((c) => (
-                  <p key={c} className="text-xs text-muted-foreground">
-                    <span className="font-semibold text-foreground">you</span>{" "}
-                    {c}
-                  </p>
+              <div className="px-4 py-2 max-h-48 overflow-y-auto space-y-2">
+                {[
+                  {
+                    id: -1,
+                    text: "Great shot! 🔥",
+                    username: "rahul_dev",
+                    replies: [],
+                  },
+                  {
+                    id: -2,
+                    text: "Love this ✨",
+                    username: "priya_k",
+                    replies: [],
+                  },
+                  {
+                    id: -3,
+                    text: "Amazing vibes 😍",
+                    username: "amit_photo",
+                    replies: [],
+                  },
+                  {
+                    id: -4,
+                    text: "So good! 🙌",
+                    username: "neha_s",
+                    replies: [],
+                  },
+                  ...(taggedComments[selectedTaggedPost.id] || []),
+                ].map((c) => (
+                  <div key={c.id} className="flex flex-col gap-0.5">
+                    <div className="flex gap-1 items-start flex-wrap">
+                      <span className="text-xs font-semibold text-foreground">
+                        {c.username}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {c.text}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (taggedReplyingTo === c.id) {
+                            setTaggedReplyingTo(null);
+                          } else {
+                            setTaggedReplyingTo(c.id);
+                            setTaggedReplyInputs((prev) => ({
+                              ...prev,
+                              [c.id]: `@${c.username} `,
+                            }));
+                          }
+                        }}
+                        className="text-[10px] font-medium text-muted-foreground leading-none"
+                      >
+                        {taggedReplyingTo === c.id ? "Cancel" : "Reply"}
+                      </button>
+                      {c.replies.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTaggedExpandedReplies((prev) => ({
+                              ...prev,
+                              [c.id]: !prev[c.id],
+                            }))
+                          }
+                          className="text-[10px] font-medium text-primary leading-none"
+                        >
+                          {taggedExpandedReplies[c.id]
+                            ? "Hide replies"
+                            : `View ${c.replies.length} ${c.replies.length === 1 ? "reply" : "replies"}`}
+                        </button>
+                      )}
+                    </div>
+                    {taggedExpandedReplies[c.id] && c.replies.length > 0 && (
+                      <div className="ml-4 mt-1 flex flex-col gap-1 border-l-2 border-border pl-3">
+                        {c.replies.map((r) => (
+                          <div key={r.id} className="flex flex-col gap-0.5">
+                            <div className="flex gap-1 items-start flex-wrap">
+                              <span className="text-xs font-semibold text-foreground">
+                                {r.username}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {r.text}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTaggedReplyingTo(c.id);
+                                setTaggedReplyInputs((prev) => ({
+                                  ...prev,
+                                  [c.id]: `@${r.username} `,
+                                }));
+                              }}
+                              className="text-[10px] font-medium text-muted-foreground leading-none self-start"
+                            >
+                              Reply
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {taggedReplyingTo === c.id && (
+                      <div className="ml-4 mt-1 flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={taggedReplyInputs[c.id] ?? ""}
+                          onChange={(e) =>
+                            setTaggedReplyInputs((prev) => ({
+                              ...prev,
+                              [c.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const text = taggedReplyInputs[c.id]?.trim();
+                              if (text && selectedTaggedPost) {
+                                setTaggedComments((prev) => {
+                                  const list =
+                                    prev[selectedTaggedPost.id] || [];
+                                  return {
+                                    ...prev,
+                                    [selectedTaggedPost.id]: list.map((cm) =>
+                                      cm.id === c.id
+                                        ? {
+                                            ...cm,
+                                            replies: [
+                                              ...cm.replies,
+                                              {
+                                                id: Date.now(),
+                                                text,
+                                                username: "you",
+                                              },
+                                            ],
+                                          }
+                                        : cm,
+                                    ),
+                                  };
+                                });
+                                setTaggedReplyInputs((prev) => ({
+                                  ...prev,
+                                  [c.id]: "",
+                                }));
+                                setTaggedReplyingTo(null);
+                                setTaggedExpandedReplies((prev) => ({
+                                  ...prev,
+                                  [c.id]: true,
+                                }));
+                              }
+                            }
+                          }}
+                          placeholder={`Reply to @${c.username}...`}
+                          className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground"
+                        />
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-primary disabled:opacity-40"
+                          disabled={!taggedReplyInputs[c.id]?.trim()}
+                          onClick={() => {
+                            const text = taggedReplyInputs[c.id]?.trim();
+                            if (text && selectedTaggedPost) {
+                              setTaggedComments((prev) => {
+                                const list = prev[selectedTaggedPost.id] || [];
+                                return {
+                                  ...prev,
+                                  [selectedTaggedPost.id]: list.map((cm) =>
+                                    cm.id === c.id
+                                      ? {
+                                          ...cm,
+                                          replies: [
+                                            ...cm.replies,
+                                            {
+                                              id: Date.now(),
+                                              text,
+                                              username: "you",
+                                            },
+                                          ],
+                                        }
+                                      : cm,
+                                  ),
+                                };
+                              });
+                              setTaggedReplyInputs((prev) => ({
+                                ...prev,
+                                [c.id]: "",
+                              }));
+                              setTaggedReplyingTo(null);
+                              setTaggedExpandedReplies((prev) => ({
+                                ...prev,
+                                [c.id]: true,
+                              }));
+                            }
+                          }}
+                        >
+                          Send
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
               {/* Comment input */}
@@ -5459,7 +6373,12 @@ function ProfilePage({
                         ...prev,
                         [selectedTaggedPost.id]: [
                           ...(prev[selectedTaggedPost.id] || []),
-                          taggedCommentInput.trim(),
+                          {
+                            id: Date.now(),
+                            text: taggedCommentInput.trim(),
+                            username: "you",
+                            replies: [],
+                          },
                         ],
                       }));
                       setTaggedCommentInput("");
@@ -5478,7 +6397,12 @@ function ProfilePage({
                         ...prev,
                         [selectedTaggedPost.id]: [
                           ...(prev[selectedTaggedPost.id] || []),
-                          taggedCommentInput.trim(),
+                          {
+                            id: Date.now(),
+                            text: taggedCommentInput.trim(),
+                            username: "you",
+                            replies: [],
+                          },
                         ],
                       }));
                       setTaggedCommentInput("");
@@ -6640,6 +7564,8 @@ function CreatePostDialog({
   const [suggestedHashtags, setSuggestedHashtags] = useState<string[]>([]);
   const [hashtagLoading, setHashtagLoading] = useState(false);
   const [hashtagError, setHashtagError] = useState("");
+  const [location, setLocation] = useState("");
+  const [mood, setMood] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function resetState() {
@@ -6649,6 +7575,8 @@ function CreatePostDialog({
     setCaption("");
     setSuggestedHashtags([]);
     setHashtagError("");
+    setLocation("");
+    setMood("");
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -6712,6 +7640,8 @@ function CreatePostDialog({
       videoUrl: postType === "reel" ? mediaUrl : undefined,
       type: postType,
       caption,
+      location: location.trim() || undefined,
+      mood: mood || undefined,
       hashtags: [],
       likes: 0,
       comments: 0,
@@ -6895,6 +7825,84 @@ function CreatePostDialog({
               }}
               data-ocid="create_post.textarea"
             />
+          </div>
+
+          {/* Location */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="create-post-location"
+              className="text-xs font-medium"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              📍 Location add करें
+            </label>
+            <Input
+              id="create-post-location"
+              placeholder="City, Place या Address..."
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              style={{
+                backgroundColor: "var(--app-input)",
+                borderColor: "var(--app-border)",
+                color: "var(--app-text)",
+              }}
+              data-ocid="create_post.input"
+            />
+          </div>
+
+          {/* Mood / Feeling */}
+          <div className="flex flex-col gap-2">
+            <span
+              className="text-xs font-medium"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              😊 Mood / Feeling
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { emoji: "😊", label: "Happy" },
+                { emoji: "😍", label: "Loved" },
+                { emoji: "🥳", label: "Excited" },
+                { emoji: "😎", label: "Cool" },
+                { emoji: "😔", label: "Sad" },
+                { emoji: "🤩", label: "Amazing" },
+                { emoji: "😴", label: "Tired" },
+                { emoji: "🙏", label: "Grateful" },
+                { emoji: "🔥", label: "Motivated" },
+                { emoji: "😂", label: "Funny" },
+                { emoji: "🌟", label: "Blessed" },
+                { emoji: "💪", label: "Strong" },
+              ].map(({ emoji, label }) => {
+                const value = `${emoji} ${label}`;
+                const selected = mood === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setMood(selected ? "" : value)}
+                    className="px-3 py-1.5 rounded-full text-xs transition-all active:scale-95"
+                    style={
+                      selected
+                        ? {
+                            background:
+                              "linear-gradient(135deg, rgba(255,107,157,0.2), rgba(196,77,255,0.2))",
+                            border: "1px solid rgba(196,77,255,0.6)",
+                            color: "#c44dff",
+                            fontWeight: 600,
+                          }
+                        : {
+                            backgroundColor: "var(--app-bg)",
+                            border: "1px solid var(--app-border)",
+                            color: "var(--app-text-muted)",
+                          }
+                    }
+                    data-ocid="create_post.toggle"
+                  >
+                    {value}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Hashtag suggest button */}
@@ -8059,6 +9067,8 @@ export default function App() {
             profile={profile}
             onEditProfile={() => setEditProfileOpen(true)}
             followedUsers={followedUsers}
+            posts={posts}
+            onBookmark={handleBookmark}
             onToggleFollow={(id) =>
               setFollowedUsers((prev) => {
                 const next = new Set(prev);
