@@ -30,20 +30,28 @@ import {
   ChevronRight,
   Copy,
   Download,
+  FileText,
   Flag,
+  Forward,
   Hash,
   Heart,
   Home,
+  Image,
   Loader2,
   LogOut,
+  MapPin,
   Maximize,
   MessageCircle,
+  Mic,
+  MicOff,
   Minimize,
   Moon,
   MoreHorizontal,
   MoreVertical,
   Music,
   Pause,
+  PhoneCall,
+  Pin,
   Play,
   Plus,
   Search,
@@ -53,10 +61,13 @@ import {
   Shield,
   Smile,
   Sparkles,
+  Sticker,
   Sun,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   User as UserIcon,
+  Video,
   Volume2,
   VolumeX,
   X,
@@ -146,6 +157,26 @@ interface Message {
   reactions?: string[];
   read?: boolean;
   isTyping?: boolean;
+  replyTo?: { id: number; text: string; sent: boolean };
+  pinned?: boolean;
+  saved?: boolean;
+  unsent?: boolean;
+  effect?: string;
+  type?: "text" | "voice" | "image" | "post" | "sticker" | "note";
+  noteData?: {
+    kind: "song" | "note" | "location";
+    title: string;
+    subtitle?: string;
+  };
+  imageUrl?: string;
+  duration?: string;
+  postData?: {
+    user: string;
+    caption: string;
+    likes: number;
+    comments: number;
+    gradient: string;
+  };
 }
 
 interface Conversation {
@@ -4979,7 +5010,6 @@ function ChatPage({
   );
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
 
-  // Open conversation when navigated from profile modal
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally run only when initialUserId changes
   useEffect(() => {
     if (!initialUserId) return;
@@ -5002,11 +5032,33 @@ function ChatPage({
     }
     onConvOpened?.();
   }, [initialUserId]);
+
   const [newMessage, setNewMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hoveredMsgId, setHoveredMsgId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // New advanced chat state
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [pinnedMsg, setPinnedMsg] = useState<Message | null>(null);
+  const [msgMenuId, setMsgMenuId] = useState<number | null>(null);
+  const [showStickers, setShowStickers] = useState(false);
+  const [showEffects, setShowEffects] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [showGallery, setShowGallery] = useState(false);
+  const [showPostShare, setShowPostShare] = useState(false);
+  const [showForward, setShowForward] = useState(false);
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [blockedInChat, setBlockedInChat] = useState<Set<number>>(new Set());
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [effectTarget, setEffectTarget] = useState<number | null>(null);
+  const [noteTab, setNoteTab] = useState<"song" | "note" | "location">("song");
+  const [noteText, setNoteText] = useState("");
+  const [pendingEffect, setPendingEffect] = useState<string | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
 
@@ -5019,14 +5071,27 @@ function ChatPage({
     c.user.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  function sendMessage() {
-    if (!newMessage.trim() || !activeConvId) return;
-    const text = newMessage.trim();
-    setNewMessage("");
+  const isBlocked = activeConv ? blockedInChat.has(activeConv.user.id) : false;
 
-    const msg: Message = {
+  function addMessageToConv(msg: Message) {
+    if (!activeConvId) return;
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConvId
+          ? {
+              ...c,
+              messages: [...c.messages, msg],
+              lastMessage: msg.text || "📎 Media",
+            }
+          : c,
+      ),
+    );
+  }
+
+  function buildMsg(overrides: Partial<Message>): Message {
+    return {
       id: Date.now(),
-      text,
+      text: "",
       sent: true,
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
@@ -5034,31 +5099,20 @@ function ChatPage({
       }),
       reactions: [],
       read: false,
+      ...overrides,
     };
+  }
 
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeConvId
-          ? { ...c, messages: [...c.messages, msg], lastMessage: text }
-          : c,
-      ),
-    );
-
-    // simulate typing then auto-reply
+  function triggerAutoReply() {
     setIsTyping(true);
     setTimeout(() => {
       setIsTyping(false);
-      const reply: Message = {
+      const reply = buildMsg({
         id: Date.now() + 1,
         text: AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)],
         sent: false,
-        time: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        reactions: [],
         read: true,
-      };
+      });
       setConversations((prev) =>
         prev.map((c) =>
           c.id === activeConvId
@@ -5071,6 +5125,23 @@ function ChatPage({
         ),
       );
     }, 1500);
+  }
+
+  function sendMessage() {
+    if (!newMessage.trim() || !activeConvId || isBlocked) return;
+    const text = newMessage.trim();
+    setNewMessage("");
+    const msg = buildMsg({
+      text,
+      replyTo: replyingTo
+        ? { id: replyingTo.id, text: replyingTo.text, sent: replyingTo.sent }
+        : undefined,
+      effect: pendingEffect ?? undefined,
+    });
+    setReplyingTo(null);
+    setPendingEffect(null);
+    addMessageToConv(msg);
+    triggerAutoReply();
   }
 
   function addReaction(msgId: number, emoji: string) {
@@ -5098,6 +5169,322 @@ function ChatPage({
     setHoveredMsgId(null);
   }
 
+  function updateMsg(msgId: number, update: Partial<Message>) {
+    if (!activeConvId) return;
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConvId
+          ? {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === msgId ? { ...m, ...update } : m,
+              ),
+            }
+          : c,
+      ),
+    );
+  }
+
+  function deleteMsg(msgId: number) {
+    if (!activeConvId) return;
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConvId
+          ? { ...c, messages: c.messages.filter((m) => m.id !== msgId) }
+          : c,
+      ),
+    );
+    setMsgMenuId(null);
+  }
+
+  function startRecording() {
+    setIsRecording(true);
+    recordingTimerRef.current = setTimeout(() => {
+      stopRecording();
+    }, 10000);
+  }
+
+  function stopRecording() {
+    setIsRecording(false);
+    if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
+    const msg = buildMsg({
+      type: "voice",
+      text: "🎙 Voice message",
+      duration: `0:${Math.floor(Math.random() * 20 + 5)
+        .toString()
+        .padStart(2, "0")}`,
+    });
+    addMessageToConv(msg);
+    triggerAutoReply();
+  }
+
+  const MOCK_SONGS = [
+    { title: "Blinding Lights", artist: "The Weeknd" },
+    { title: "Levitating", artist: "Dua Lipa" },
+    { title: "Stay", artist: "The Kid LAROI" },
+    { title: "As It Was", artist: "Harry Styles" },
+  ];
+
+  const MOCK_POSTS = [
+    {
+      user: "alex_photo",
+      caption: "Golden hour magic ✨",
+      likes: 1204,
+      comments: 87,
+      gradient: "linear-gradient(135deg,#f093fb,#f5576c)",
+    },
+    {
+      user: "travel_vibes",
+      caption: "Mountains calling 🏔️",
+      likes: 892,
+      comments: 43,
+      gradient: "linear-gradient(135deg,#4facfe,#00f2fe)",
+    },
+    {
+      user: "foodie_life",
+      caption: "Pasta perfection 🍝",
+      likes: 2341,
+      comments: 156,
+      gradient: "linear-gradient(135deg,#43e97b,#38f9d7)",
+    },
+  ];
+
+  const STICKERS = [
+    "😂",
+    "😍",
+    "🔥",
+    "❤️",
+    "🥳",
+    "😭",
+    "😎",
+    "🙏",
+    "💯",
+    "👻",
+    "🎉",
+    "🌈",
+    "💪",
+    "🎸",
+    "🦋",
+    "🌟",
+  ];
+  const EFFECTS = [
+    { key: "hearts", label: "Hearts", icon: "❤️" },
+    { key: "confetti", label: "Confetti", icon: "🎉" },
+    { key: "fire", label: "Fire", icon: "🔥" },
+    { key: "sparkle", label: "Sparkle", icon: "✨" },
+  ];
+
+  const GALLERY_GRADIENTS = [
+    "linear-gradient(135deg,#f093fb,#f5576c)",
+    "linear-gradient(135deg,#4facfe,#00f2fe)",
+    "linear-gradient(135deg,#43e97b,#38f9d7)",
+    "linear-gradient(135deg,#fa709a,#fee140)",
+    "linear-gradient(135deg,#a18cd1,#fbc2eb)",
+    "linear-gradient(135deg,#ffecd2,#fcb69f)",
+  ];
+
+  function renderMsgBubble(msg: Message) {
+    if (msg.unsent) {
+      return (
+        <div
+          className="px-4 py-2 rounded-2xl text-sm max-w-[70%] italic opacity-50 border border-dashed border-border"
+          style={{
+            backgroundColor: "var(--app-card)",
+            color: "var(--app-text-muted)",
+          }}
+        >
+          Message unsent
+        </div>
+      );
+    }
+
+    if (msg.type === "sticker") {
+      return <div className="text-5xl px-2 py-1">{msg.text}</div>;
+    }
+
+    if (msg.type === "voice") {
+      return (
+        <div
+          className="px-4 py-3 rounded-2xl max-w-[70%] flex items-center gap-3"
+          style={{
+            background: msg.sent
+              ? "linear-gradient(135deg,#ff6b9d,#c44dff)"
+              : "var(--app-card)",
+            color: msg.sent ? "white" : "var(--app-text)",
+          }}
+        >
+          <button
+            type="button"
+            className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{
+              backgroundColor: msg.sent
+                ? "rgba(255,255,255,0.25)"
+                : "var(--app-bg)",
+            }}
+          >
+            <Play className="w-4 h-4" />
+          </button>
+          <div className="flex items-end gap-0.5" aria-hidden="true">
+            {[
+              "w4a",
+              "w8b",
+              "w12c",
+              "w6d",
+              "w14e",
+              "w10f",
+              "w5g",
+              "w16h",
+              "w9i",
+              "w7j",
+              "w13k",
+              "w11l",
+              "w6m",
+              "w15n",
+              "w8o",
+              "w4p",
+              "w12q",
+              "w10r",
+            ].map((id, i) => {
+              const waveHeights = [
+                4, 8, 12, 6, 14, 10, 5, 16, 9, 7, 13, 11, 6, 15, 8, 4, 12, 10,
+              ];
+              const h = waveHeights[i];
+              return (
+                <div
+                  key={id}
+                  className="w-1 rounded-full"
+                  style={{
+                    height: `${h}px`,
+                    backgroundColor: msg.sent
+                      ? "rgba(255,255,255,0.7)"
+                      : "var(--app-text-muted)",
+                  }}
+                />
+              );
+            })}
+          </div>
+          <span className="text-xs opacity-70">{msg.duration}</span>
+        </div>
+      );
+    }
+
+    if (msg.type === "image") {
+      return (
+        <div className="rounded-2xl overflow-hidden max-w-[200px]">
+          <div
+            className="w-[200px] h-[200px]"
+            style={{
+              background:
+                msg.imageUrl || "linear-gradient(135deg,#4facfe,#00f2fe)",
+            }}
+          />
+        </div>
+      );
+    }
+
+    if (msg.type === "post") {
+      const pd = msg.postData;
+      return (
+        <div
+          className="rounded-2xl overflow-hidden max-w-[240px] border border-border"
+          style={{ backgroundColor: "var(--app-card)" }}
+        >
+          <div
+            className="h-[140px] w-full"
+            style={{
+              background:
+                pd?.gradient || "linear-gradient(135deg,#f093fb,#f5576c)",
+            }}
+          />
+          <div className="p-3">
+            <p
+              className="text-xs font-semibold"
+              style={{ color: "var(--app-text)" }}
+            >
+              @{pd?.user}
+            </p>
+            <p
+              className="text-xs mt-0.5 truncate"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              {pd?.caption}
+            </p>
+            <div
+              className="flex gap-3 mt-2 text-xs"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              <span>❤️ {pd?.likes}</span>
+              <span>💬 {pd?.comments}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (msg.type === "note") {
+      const nd = msg.noteData;
+      const bgMap: Record<string, string> = {
+        song: "linear-gradient(135deg,#a855f7,#7c3aed)",
+        note: "linear-gradient(135deg,#f59e0b,#d97706)",
+        location: "linear-gradient(135deg,#22c55e,#15803d)",
+      };
+      const iconMap: Record<string, string> = {
+        song: "🎵",
+        note: "📝",
+        location: "📍",
+      };
+      return (
+        <div
+          className="px-4 py-3 rounded-2xl max-w-[220px]"
+          style={{ background: bgMap[nd?.kind || "note"] }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{iconMap[nd?.kind || "note"]}</span>
+            <div>
+              <p className="text-white text-sm font-semibold">{nd?.title}</p>
+              {nd?.subtitle && (
+                <p className="text-white/70 text-xs">{nd.subtitle}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Default text bubble
+    return (
+      <div
+        className="px-4 py-2 rounded-2xl text-sm max-w-[70%]"
+        style={{
+          background: msg.sent
+            ? "linear-gradient(135deg,#ff6b9d,#c44dff)"
+            : "var(--app-card)",
+          color: msg.sent ? "white" : "var(--app-text)",
+          borderBottomRightRadius: msg.sent ? 4 : undefined,
+          borderBottomLeftRadius: !msg.sent ? 4 : undefined,
+        }}
+      >
+        {msg.replyTo && (
+          <div className="mb-2 pl-2 border-l-2 border-white/40 text-xs opacity-70 truncate">
+            {msg.replyTo.text}
+          </div>
+        )}
+        <p>{msg.text}</p>
+        <div
+          className={`flex items-center gap-1 mt-1 ${msg.sent ? "justify-end" : "justify-start"}`}
+        >
+          <p className="text-[10px] opacity-70">{msg.time}</p>
+          {msg.sent && (
+            <div className="flex">
+              <Check className="w-3 h-3 opacity-70" />
+              <Check className="w-3 h-3 -ml-1.5 opacity-70" />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex h-[calc(100vh-140px)] rounded-xl overflow-hidden border border-border"
@@ -5105,9 +5492,7 @@ function ChatPage({
     >
       {/* Conversation list */}
       <div
-        className={`flex-shrink-0 w-full md:w-72 border-r border-border flex flex-col ${
-          activeConv ? "hidden md:flex" : "flex"
-        }`}
+        className={`flex-shrink-0 w-full md:w-72 border-r border-border flex flex-col ${activeConv ? "hidden md:flex" : "flex"}`}
         style={{ backgroundColor: "var(--app-card)" }}
       >
         <div className="p-4 border-b border-border">
@@ -5141,9 +5526,7 @@ function ChatPage({
               type="button"
               key={conv.id}
               onClick={() => setActiveConvId(conv.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 text-left transition-colors ${
-                activeConvId === conv.id ? "bg-muted" : ""
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 text-left transition-colors ${activeConvId === conv.id ? "bg-muted" : ""}`}
               data-ocid={`chat.item.${i + 1}`}
             >
               <div className="relative flex-shrink-0">
@@ -5185,7 +5568,7 @@ function ChatPage({
       {/* Active chat */}
       {activeConv ? (
         <div
-          className="flex-1 flex flex-col"
+          className="flex-1 flex flex-col min-w-0"
           style={{ backgroundColor: "var(--app-bg)" }}
         >
           {/* Chat header */}
@@ -5216,7 +5599,7 @@ function ChatPage({
                 <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background bg-green-500" />
               )}
             </div>
-            <div>
+            <div className="flex-1">
               <p
                 className="font-semibold text-sm"
                 style={{ color: "var(--app-text)" }}
@@ -5234,7 +5617,123 @@ function ChatPage({
                 {ONLINE_USER_IDS.has(activeConv.user.id) ? "Online" : "Offline"}
               </p>
             </div>
+            {/* Header action buttons */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-muted"
+                title="Voice Call"
+                data-ocid="chat.secondary_button"
+              >
+                <PhoneCall
+                  className="w-4 h-4"
+                  style={{ color: "var(--app-text-muted)" }}
+                />
+              </button>
+              <button
+                type="button"
+                className="p-2 rounded-full hover:bg-muted"
+                title="Video Call"
+                data-ocid="chat.secondary_button"
+              >
+                <Video
+                  className="w-4 h-4"
+                  style={{ color: "var(--app-text-muted)" }}
+                />
+              </button>
+              <DropdownMenu open={showChatMenu} onOpenChange={setShowChatMenu}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="p-2 rounded-full hover:bg-muted"
+                    data-ocid="chat.dropdown_menu"
+                  >
+                    <MoreVertical
+                      className="w-4 h-4"
+                      style={{ color: "var(--app-text-muted)" }}
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => toast.success("Notifications muted")}
+                  >
+                    🔔 Mute notifications
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => toast.info("Search coming soon")}
+                  >
+                    🔍 Search in chat
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => {
+                      setBlockedInChat((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(activeConv.user.id)) {
+                          next.delete(activeConv.user.id);
+                          toast.success(`Unblocked ${activeConv.user.name}`);
+                        } else {
+                          next.add(activeConv.user.id);
+                          toast.success(`Blocked ${activeConv.user.name}`);
+                        }
+                        return next;
+                      });
+                      setShowChatMenu(false);
+                    }}
+                    data-ocid="chat.delete_button"
+                  >
+                    🚫{" "}
+                    {blockedInChat.has(activeConv.user.id)
+                      ? "Unblock user"
+                      : "Block user"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
+
+          {/* Pinned message banner */}
+          {pinnedMsg && (
+            <div
+              className="flex items-center gap-2 px-4 py-2 border-b border-border"
+              style={{
+                background:
+                  "linear-gradient(90deg,rgba(255,107,157,0.15),rgba(196,77,255,0.15))",
+              }}
+            >
+              <Pin
+                className="w-3 h-3 flex-shrink-0"
+                style={{ color: "var(--app-text-muted)" }}
+              />
+              <p
+                className="text-xs flex-1 truncate"
+                style={{ color: "var(--app-text)" }}
+              >
+                📌 {pinnedMsg.text || "Pinned message"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setPinnedMsg(null)}
+                data-ocid="chat.close_button"
+              >
+                <X
+                  className="w-3 h-3"
+                  style={{ color: "var(--app-text-muted)" }}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* Blocked banner */}
+          {isBlocked && (
+            <div className="flex items-center justify-center gap-2 px-4 py-2 border-b border-destructive/30 bg-destructive/10">
+              <p className="text-xs text-destructive font-medium">
+                You have blocked this user
+              </p>
+            </div>
+          )}
 
           {/* Messages */}
           <div
@@ -5244,18 +5743,21 @@ function ChatPage({
             {activeConv.messages.map((msg, i) => (
               <div
                 key={msg.id}
-                className={`flex flex-col ${msg.sent ? "items-end" : "items-start"}`}
-                onMouseEnter={() => !msg.sent && setHoveredMsgId(msg.id)}
-                onMouseLeave={() => setHoveredMsgId(null)}
+                className={`flex flex-col relative ${msg.sent ? "items-end" : "items-start"}`}
+                onMouseEnter={() => setHoveredMsgId(msg.id)}
+                onMouseLeave={() => {
+                  setHoveredMsgId(null);
+                  if (msgMenuId === msg.id) setMsgMenuId(null);
+                }}
                 data-ocid={`chat.item.${i + 1}`}
               >
-                {/* Reaction bar on hover */}
-                {!msg.sent && hoveredMsgId === msg.id && (
+                {/* Reaction bar on hover for received messages */}
+                {!msg.sent && !msg.unsent && hoveredMsgId === msg.id && (
                   <div
                     className="flex gap-1 mb-1 px-2 py-1 rounded-full shadow-lg border border-border"
                     style={{ backgroundColor: "var(--app-card)" }}
                   >
-                    {["❤️", "😂", "👍"].map((emoji) => (
+                    {["❤️", "😂", "👍", "😮", "😢"].map((emoji) => (
                       <button
                         key={emoji}
                         type="button"
@@ -5265,32 +5767,157 @@ function ChatPage({
                         {emoji}
                       </button>
                     ))}
+                    {/* Remix button */}
+                    <button
+                      type="button"
+                      className="text-sm hover:scale-125 transition-transform ml-1 px-1 rounded text-xs font-medium"
+                      style={{ color: "var(--app-text-muted)" }}
+                      onClick={() => {
+                        const remixMsg = buildMsg({
+                          text: "✨ Remixed this!",
+                          sent: true,
+                        });
+                        addMessageToConv(remixMsg);
+                        triggerAutoReply();
+                      }}
+                    >
+                      🔀
+                    </button>
                   </div>
                 )}
 
-                <div
-                  className="px-4 py-2 rounded-2xl text-sm max-w-[70%]"
-                  style={{
-                    background: msg.sent
-                      ? "linear-gradient(135deg, #ff6b9d, #c44dff)"
-                      : "var(--app-card)",
-                    color: msg.sent ? "white" : "var(--app-text)",
-                    borderBottomRightRadius: msg.sent ? 4 : undefined,
-                    borderBottomLeftRadius: !msg.sent ? 4 : undefined,
-                  }}
-                >
-                  <p>{msg.text}</p>
-                  <div
-                    className={`flex items-center gap-1 mt-1 ${msg.sent ? "justify-end" : "justify-start"}`}
-                  >
-                    <p className="text-[10px] opacity-70">{msg.time}</p>
-                    {msg.sent && (
-                      <div className="flex">
-                        <Check className="w-3 h-3 opacity-70" />
-                        <Check className="w-3 h-3 -ml-1.5 opacity-70" />
-                      </div>
-                    )}
-                  </div>
+                <div className="relative">
+                  {renderMsgBubble(msg)}
+                  {/* Message ⋯ menu trigger */}
+                  {hoveredMsgId === msg.id && !msg.unsent && (
+                    <button
+                      type="button"
+                      className={`absolute top-0 ${msg.sent ? "-left-7" : "-right-7"} p-1 rounded-full opacity-70 hover:opacity-100`}
+                      style={{ backgroundColor: "var(--app-card)" }}
+                      onClick={() =>
+                        setMsgMenuId(msgMenuId === msg.id ? null : msg.id)
+                      }
+                      data-ocid="chat.dropdown_menu"
+                    >
+                      <MoreHorizontal
+                        className="w-3 h-3"
+                        style={{ color: "var(--app-text)" }}
+                      />
+                    </button>
+                  )}
+                  {/* Context menu */}
+                  {msgMenuId === msg.id && (
+                    <div
+                      className={`absolute ${msg.sent ? "right-0" : "left-0"} top-6 z-50 rounded-xl shadow-xl border border-border overflow-hidden`}
+                      style={{
+                        backgroundColor: "var(--app-card)",
+                        minWidth: 160,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                        style={{ color: "var(--app-text)" }}
+                        onClick={() => {
+                          setReplyingTo(msg);
+                          setMsgMenuId(null);
+                        }}
+                        data-ocid="chat.secondary_button"
+                      >
+                        ↩ Reply
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                        style={{ color: "var(--app-text)" }}
+                        onClick={() => {
+                          setForwardMsg(msg);
+                          setShowForward(true);
+                          setMsgMenuId(null);
+                        }}
+                        data-ocid="chat.secondary_button"
+                      >
+                        <Forward className="w-3 h-3" /> Forward
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                        style={{ color: "var(--app-text)" }}
+                        onClick={() => {
+                          navigator.clipboard?.writeText(msg.text || "");
+                          toast.success("Copied");
+                          setMsgMenuId(null);
+                        }}
+                        data-ocid="chat.secondary_button"
+                      >
+                        <Copy className="w-3 h-3" /> Copy
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                        style={{ color: "var(--app-text)" }}
+                        onClick={() => {
+                          updateMsg(msg.id, { saved: !msg.saved });
+                          toast.success(
+                            msg.saved ? "Removed from saved" : "Saved",
+                          );
+                          setMsgMenuId(null);
+                        }}
+                        data-ocid="chat.toggle"
+                      >
+                        <Bookmark className="w-3 h-3" />{" "}
+                        {msg.saved ? "Unsave" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                        style={{ color: "var(--app-text)" }}
+                        onClick={() => {
+                          setPinnedMsg(msg);
+                          toast.success("Message pinned");
+                          setMsgMenuId(null);
+                        }}
+                        data-ocid="chat.toggle"
+                      >
+                        <Pin className="w-3 h-3" /> Pin
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left"
+                        style={{ color: "var(--app-text)" }}
+                        onClick={() => {
+                          setEffectTarget(msg.id);
+                          setShowEffects(true);
+                          setMsgMenuId(null);
+                        }}
+                        data-ocid="chat.secondary_button"
+                      >
+                        <Sparkles className="w-3 h-3" /> Add Effect
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left text-destructive"
+                        onClick={() => deleteMsg(msg.id)}
+                        data-ocid="chat.delete_button"
+                      >
+                        <Trash2 className="w-3 h-3" /> Delete for you
+                      </button>
+                      {msg.sent && (
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted text-left text-destructive"
+                          onClick={() => {
+                            updateMsg(msg.id, { unsent: true });
+                            setMsgMenuId(null);
+                            toast.success("Message unsent");
+                          }}
+                          data-ocid="chat.delete_button"
+                        >
+                          <X className="w-3 h-3" /> Unsend
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Reactions display */}
@@ -5303,6 +5930,22 @@ function ChatPage({
                       <span key={r}>{r}</span>
                     ))}
                   </div>
+                )}
+
+                {/* Effect badge */}
+                {msg.effect && (
+                  <div className="text-xs mt-0.5 opacity-70">
+                    {EFFECTS.find((e) => e.key === msg.effect)?.icon}{" "}
+                    {EFFECTS.find((e) => e.key === msg.effect)?.label}
+                  </div>
+                )}
+
+                {/* Saved badge */}
+                {msg.saved && (
+                  <Bookmark
+                    className="w-3 h-3 mt-0.5 fill-current"
+                    style={{ color: "#f59e0b" }}
+                  />
                 )}
               </div>
             ))}
@@ -5332,7 +5975,7 @@ function ChatPage({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Emoji quick bar */}
+          {/* Quick emoji bar */}
           <div
             className="flex items-center gap-2 px-4 py-2 border-t border-border overflow-x-auto"
             style={{ backgroundColor: "var(--app-card)" }}
@@ -5349,36 +5992,515 @@ function ChatPage({
             ))}
           </div>
 
-          {/* Input */}
-          <div
-            className="flex items-center gap-2 px-4 py-3 border-t border-border"
-            style={{ backgroundColor: "var(--app-card)" }}
-          >
-            <Input
-              placeholder="Message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              className="rounded-full border-border flex-1"
+          {/* Reply bar */}
+          {replyingTo && (
+            <div
+              className="flex items-center gap-2 px-4 py-2 border-t border-border"
               style={{
-                backgroundColor: "var(--app-bg)",
-                color: "var(--app-text)",
+                background:
+                  "linear-gradient(90deg,rgba(255,107,157,0.08),rgba(196,77,255,0.08))",
               }}
-              data-ocid="chat.input"
-            />
-            <Button
-              onClick={sendMessage}
-              size="sm"
-              className="rounded-full px-4 text-white"
-              style={{
-                background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
-                border: "none",
-              }}
-              data-ocid="chat.submit_button"
             >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
+              <div className="flex-1 min-w-0">
+                <p
+                  className="text-xs font-medium"
+                  style={{ color: "var(--app-badge)" }}
+                >
+                  ↩ Replying to{" "}
+                  {replyingTo.sent ? "yourself" : activeConv.user.name}
+                </p>
+                <p
+                  className="text-xs truncate"
+                  style={{ color: "var(--app-text-muted)" }}
+                >
+                  {replyingTo.text}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyingTo(null)}
+                className="p-1"
+                data-ocid="chat.close_button"
+              >
+                <X
+                  className="w-4 h-4"
+                  style={{ color: "var(--app-text-muted)" }}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* Recording indicator */}
+          {isRecording && (
+            <div className="flex items-center gap-3 px-4 py-2 border-t border-border bg-red-500/10">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <div className="flex items-end gap-0.5">
+                {[
+                  ["r6a", 6, 0],
+                  ["r10b", 10, 80],
+                  ["r14c", 14, 160],
+                  ["r8d", 8, 240],
+                  ["r12e", 12, 320],
+                  ["r16f", 16, 400],
+                  ["r7g", 7, 480],
+                  ["r11h", 11, 560],
+                  ["r9i", 9, 640],
+                  ["r13j", 13, 720],
+                  ["r5k", 5, 800],
+                  ["r15l", 15, 880],
+                ].map(([id, h, delay]) => (
+                  <div
+                    key={id as string}
+                    className="w-1 rounded-full bg-red-400 animate-bounce"
+                    style={{ height: `${h}px`, animationDelay: `${delay}ms` }}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-red-500 font-medium flex-1">
+                Recording...
+              </span>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="text-xs text-white bg-red-500 px-3 py-1 rounded-full font-medium"
+                data-ocid="chat.secondary_button"
+              >
+                Stop
+              </button>
+            </div>
+          )}
+
+          {/* Input toolbar */}
+          {!isBlocked && (
+            <div
+              className="border-t border-border"
+              style={{ backgroundColor: "var(--app-card)" }}
+            >
+              {/* Toolbar icons row */}
+              <div className="flex items-center gap-1 px-3 pt-2 pb-1">
+                <button
+                  type="button"
+                  title="Camera"
+                  className="p-2 rounded-full hover:bg-muted"
+                  onClick={() => setShowCamera(true)}
+                  data-ocid="chat.secondary_button"
+                >
+                  <Camera
+                    className="w-5 h-5"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+                <button
+                  type="button"
+                  title="Gallery"
+                  className="p-2 rounded-full hover:bg-muted"
+                  onClick={() => setShowGallery(true)}
+                  data-ocid="chat.secondary_button"
+                >
+                  <Image
+                    className="w-5 h-5"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+                <button
+                  type="button"
+                  title="Voice"
+                  className="p-2 rounded-full hover:bg-muted"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  data-ocid="chat.toggle"
+                >
+                  {isRecording ? (
+                    <MicOff className="w-5 h-5 text-red-500" />
+                  ) : (
+                    <Mic
+                      className="w-5 h-5"
+                      style={{ color: "var(--app-text-muted)" }}
+                    />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  title="Stickers"
+                  className="p-2 rounded-full hover:bg-muted"
+                  onClick={() => {
+                    setShowStickers(true);
+                    setShowEffects(false);
+                    setShowNotes(false);
+                  }}
+                  data-ocid="chat.secondary_button"
+                >
+                  <Sticker
+                    className="w-5 h-5"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+                <button
+                  type="button"
+                  title="Effects"
+                  className="p-2 rounded-full hover:bg-muted"
+                  onClick={() => {
+                    setShowEffects(true);
+                    setShowStickers(false);
+                    setShowNotes(false);
+                    setEffectTarget(null);
+                  }}
+                  data-ocid="chat.secondary_button"
+                >
+                  <Sparkles
+                    className="w-5 h-5"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+                <button
+                  type="button"
+                  title="Share Post"
+                  className="p-2 rounded-full hover:bg-muted"
+                  onClick={() => setShowPostShare(true)}
+                  data-ocid="chat.secondary_button"
+                >
+                  <Share2
+                    className="w-5 h-5"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+                <button
+                  type="button"
+                  title="Notes"
+                  className="p-2 rounded-full hover:bg-muted"
+                  onClick={() => {
+                    setShowNotes(true);
+                    setShowStickers(false);
+                    setShowEffects(false);
+                  }}
+                  data-ocid="chat.secondary_button"
+                >
+                  <FileText
+                    className="w-5 h-5"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+              </div>
+              {/* Input row */}
+              <div className="flex items-center gap-2 px-3 pb-3">
+                <Input
+                  placeholder="Message..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  className="rounded-full border-border flex-1"
+                  style={{
+                    backgroundColor: "var(--app-bg)",
+                    color: "var(--app-text)",
+                  }}
+                  data-ocid="chat.input"
+                />
+                <Button
+                  onClick={sendMessage}
+                  size="sm"
+                  className="rounded-full px-4 text-white flex-shrink-0"
+                  style={{
+                    background: "linear-gradient(135deg,#ff6b9d,#c44dff)",
+                    border: "none",
+                  }}
+                  data-ocid="chat.submit_button"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Sticker panel */}
+          {showStickers && (
+            <div
+              className="border-t border-border p-3"
+              style={{ backgroundColor: "var(--app-card)" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  className="text-xs font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  Stickers
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowStickers(false)}
+                  data-ocid="chat.close_button"
+                >
+                  <X
+                    className="w-4 h-4"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+              </div>
+              <div className="grid grid-cols-8 gap-1">
+                {STICKERS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="text-2xl hover:scale-125 transition-transform p-1"
+                    onClick={() => {
+                      const msg = buildMsg({ type: "sticker", text: s });
+                      addMessageToConv(msg);
+                      setShowStickers(false);
+                      triggerAutoReply();
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Effects panel */}
+          {showEffects && (
+            <div
+              className="border-t border-border p-3"
+              style={{ backgroundColor: "var(--app-card)" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  className="text-xs font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  Effects
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowEffects(false)}
+                  data-ocid="chat.close_button"
+                >
+                  <X
+                    className="w-4 h-4"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+              </div>
+              <div className="flex gap-3">
+                {EFFECTS.map((ef) => (
+                  <button
+                    key={ef.key}
+                    type="button"
+                    className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-muted transition-colors"
+                    onClick={() => {
+                      if (effectTarget !== null) {
+                        updateMsg(effectTarget, { effect: ef.key });
+                        toast.success(`${ef.icon} Effect added!`);
+                        setEffectTarget(null);
+                      } else {
+                        setPendingEffect(ef.key);
+                        toast.success(
+                          `${ef.icon} Effect will apply to next message`,
+                        );
+                      }
+                      setShowEffects(false);
+                    }}
+                    data-ocid="chat.toggle"
+                  >
+                    <span className="text-2xl">{ef.icon}</span>
+                    <span
+                      className="text-xs"
+                      style={{ color: "var(--app-text-muted)" }}
+                    >
+                      {ef.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notes panel */}
+          {showNotes && (
+            <div
+              className="border-t border-border p-3"
+              style={{ backgroundColor: "var(--app-card)" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span
+                  className="text-xs font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  Notes
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowNotes(false)}
+                  data-ocid="chat.close_button"
+                >
+                  <X
+                    className="w-4 h-4"
+                    style={{ color: "var(--app-text-muted)" }}
+                  />
+                </button>
+              </div>
+              {/* Note tabs */}
+              <div className="flex gap-2 mb-3">
+                {(["song", "note", "location"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`text-xs px-3 py-1 rounded-full font-medium transition-colors ${noteTab === t ? "text-white" : ""}`}
+                    style={{
+                      background:
+                        noteTab === t
+                          ? "linear-gradient(135deg,#ff6b9d,#c44dff)"
+                          : "var(--app-bg)",
+                      color: noteTab === t ? "white" : "var(--app-text-muted)",
+                    }}
+                    onClick={() => setNoteTab(t)}
+                    data-ocid="chat.tab"
+                  >
+                    {t === "song"
+                      ? "🎵 Song"
+                      : t === "note"
+                        ? "📝 Note"
+                        : "📍 Location"}
+                  </button>
+                ))}
+              </div>
+              {noteTab === "song" && (
+                <div className="flex flex-col gap-1">
+                  {MOCK_SONGS.map((song) => (
+                    <button
+                      key={song.title}
+                      type="button"
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted text-left"
+                      onClick={() => {
+                        const msg = buildMsg({
+                          type: "note",
+                          text: `🎵 ${song.title}`,
+                          noteData: {
+                            kind: "song",
+                            title: song.title,
+                            subtitle: song.artist,
+                          },
+                        });
+                        addMessageToConv(msg);
+                        setShowNotes(false);
+                        triggerAutoReply();
+                      }}
+                      data-ocid="chat.secondary_button"
+                    >
+                      <Music
+                        className="w-8 h-8 p-1.5 rounded-full text-white flex-shrink-0"
+                        style={{
+                          background: "linear-gradient(135deg,#a855f7,#7c3aed)",
+                        }}
+                      />
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          {song.title}
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          {song.artist}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {noteTab === "note" && (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm resize-none"
+                    style={{
+                      backgroundColor: "var(--app-bg)",
+                      color: "var(--app-text)",
+                    }}
+                    rows={3}
+                    placeholder="Write a note..."
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    data-ocid="chat.textarea"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!noteText.trim()}
+                    onClick={() => {
+                      const msg = buildMsg({
+                        type: "note",
+                        text: `📝 ${noteText}`,
+                        noteData: { kind: "note", title: noteText },
+                      });
+                      addMessageToConv(msg);
+                      setNoteText("");
+                      setShowNotes(false);
+                      triggerAutoReply();
+                    }}
+                    style={{
+                      background: "linear-gradient(135deg,#f59e0b,#d97706)",
+                      border: "none",
+                      color: "white",
+                    }}
+                    data-ocid="chat.submit_button"
+                  >
+                    Send Note
+                  </Button>
+                </div>
+              )}
+              {noteTab === "location" && (
+                <div className="flex flex-col gap-2">
+                  <div
+                    className="w-full h-28 rounded-lg overflow-hidden flex items-center justify-center"
+                    style={{
+                      background: "linear-gradient(135deg,#22c55e,#15803d)",
+                    }}
+                  >
+                    <div className="text-center text-white">
+                      <MapPin className="w-8 h-8 mx-auto mb-1" />
+                      <p className="text-sm font-medium">Mumbai, India</p>
+                      <p className="text-xs opacity-70">
+                        19.0760° N, 72.8777° E
+                      </p>
+                    </div>
+                  </div>
+                  {[
+                    "Mumbai, India",
+                    "Delhi, India",
+                    "New York, USA",
+                    "London, UK",
+                  ].map((city) => (
+                    <button
+                      key={city}
+                      type="button"
+                      className="flex items-center gap-2 p-2 rounded-lg hover:bg-muted text-left"
+                      onClick={() => {
+                        const msg = buildMsg({
+                          type: "note",
+                          text: `📍 ${city}`,
+                          noteData: { kind: "location", title: city },
+                        });
+                        addMessageToConv(msg);
+                        setShowNotes(false);
+                        triggerAutoReply();
+                      }}
+                      data-ocid="chat.secondary_button"
+                    >
+                      <MapPin
+                        className="w-4 h-4"
+                        style={{ color: "#22c55e" }}
+                      />
+                      <span
+                        className="text-sm"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {city}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div
@@ -5403,6 +6525,181 @@ function ChatPage({
           </p>
         </div>
       )}
+
+      {/* Camera Modal */}
+      <Dialog open={showCamera} onOpenChange={setShowCamera}>
+        <DialogContent className="max-w-sm" data-ocid="chat.modal">
+          <DialogHeader>
+            <DialogTitle>Camera</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-full h-52 rounded-xl bg-gray-900 flex items-center justify-center">
+              <div className="text-center text-gray-400">
+                <Camera className="w-12 h-12 mx-auto mb-2" />
+                <p className="text-sm">Camera Preview</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="w-14 h-14 rounded-full border-4 border-white bg-white/20 hover:bg-white/30 transition-colors"
+              onClick={() => {
+                const gradient =
+                  GALLERY_GRADIENTS[
+                    Math.floor(Math.random() * GALLERY_GRADIENTS.length)
+                  ];
+                const msg = buildMsg({
+                  type: "image",
+                  text: "📷 Photo",
+                  imageUrl: gradient,
+                });
+                addMessageToConv(msg);
+                setShowCamera(false);
+                triggerAutoReply();
+                toast.success("Photo sent!");
+              }}
+              data-ocid="chat.primary_button"
+            >
+              <Camera className="w-6 h-6 mx-auto text-white" />
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Gallery Modal */}
+      <Dialog open={showGallery} onOpenChange={setShowGallery}>
+        <DialogContent className="max-w-sm" data-ocid="chat.modal">
+          <DialogHeader>
+            <DialogTitle>Gallery</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-1">
+            {GALLERY_GRADIENTS.map((gradient, idx) => (
+              <button
+                key={gradient}
+                type="button"
+                className="rounded-lg overflow-hidden hover:opacity-80 transition-opacity"
+                onClick={() => {
+                  const msg = buildMsg({
+                    type: "image",
+                    text: "🖼 Image",
+                    imageUrl: gradient,
+                  });
+                  addMessageToConv(msg);
+                  setShowGallery(false);
+                  triggerAutoReply();
+                }}
+                data-ocid={`chat.item.${idx + 1}`}
+              >
+                <div className="w-full h-24" style={{ background: gradient }} />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Post Share Modal */}
+      <Dialog open={showPostShare} onOpenChange={setShowPostShare}>
+        <DialogContent className="max-w-sm" data-ocid="chat.modal">
+          <DialogHeader>
+            <DialogTitle>Share Post</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            {MOCK_POSTS.map((post, idx) => (
+              <button
+                key={post.user}
+                type="button"
+                className="flex gap-3 items-center p-2 rounded-xl hover:bg-muted text-left border border-border"
+                onClick={() => {
+                  const msg = buildMsg({
+                    type: "post",
+                    text: `Shared: ${post.caption}`,
+                    postData: post,
+                  });
+                  addMessageToConv(msg);
+                  setShowPostShare(false);
+                  triggerAutoReply();
+                  toast.success("Post shared!");
+                }}
+                data-ocid={`chat.item.${idx + 1}`}
+              >
+                <div
+                  className="w-14 h-14 rounded-lg flex-shrink-0"
+                  style={{ background: post.gradient }}
+                />
+                <div className="min-w-0">
+                  <p
+                    className="text-sm font-medium"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    @{post.user}
+                  </p>
+                  <p
+                    className="text-xs truncate"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    {post.caption}
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    ❤️ {post.likes}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Forward Modal */}
+      <Dialog open={showForward} onOpenChange={setShowForward}>
+        <DialogContent className="max-w-sm" data-ocid="chat.modal">
+          <DialogHeader>
+            <DialogTitle>Forward to...</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+            {conversations.map((conv, idx) => (
+              <button
+                key={conv.id}
+                type="button"
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted text-left"
+                onClick={() => {
+                  if (forwardMsg) {
+                    const fwdMsg = buildMsg({
+                      ...forwardMsg,
+                      id: Date.now(),
+                      text: `↪ ${forwardMsg.text}`,
+                    });
+                    setConversations((prev) =>
+                      prev.map((c) =>
+                        c.id === conv.id
+                          ? {
+                              ...c,
+                              messages: [...c.messages, fwdMsg],
+                              lastMessage: fwdMsg.text,
+                            }
+                          : c,
+                      ),
+                    );
+                    toast.success(`Forwarded to ${conv.user.name}`);
+                  }
+                  setShowForward(false);
+                  setForwardMsg(null);
+                }}
+                data-ocid={`chat.item.${idx + 1}`}
+              >
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={conv.user.avatar} alt={conv.user.name} />
+                  <AvatarFallback>{conv.user.name[0]}</AvatarFallback>
+                </Avatar>
+                <span className="text-sm" style={{ color: "var(--app-text)" }}>
+                  {conv.user.name}
+                </span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
