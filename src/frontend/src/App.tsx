@@ -36,11 +36,14 @@ import {
   Home,
   Loader2,
   LogOut,
+  Maximize,
   MessageCircle,
+  Minimize,
   Moon,
   MoreHorizontal,
   MoreVertical,
   Music,
+  Pause,
   Play,
   Plus,
   Search,
@@ -3250,6 +3253,36 @@ function ReelsPage({
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const lastTapRef = useRef<Record<number, number>>({});
   const snapContainerRef = useRef<HTMLDivElement>(null);
+  const [pausedReels, setPausedReels] = useState<Set<number>>(new Set());
+  const [showShareSheet, setShowShareSheet] = useState<number | null>(null);
+  const [showMoreSheet, setShowMoreSheet] = useState<number | null>(null);
+  const [showAudioSheet, setShowAudioSheet] = useState<number | null>(null);
+  const [showAIDialog, setShowAIDialog] = useState(false);
+  const [showWhyDialog, setShowWhyDialog] = useState(false);
+  const [showPrefsDialog, setShowPrefsDialog] = useState(false);
+  const [showRemixConfirm, setShowRemixConfirm] = useState<number | null>(null);
+  const [hiddenReelIds, setHiddenReelIds] = useState<Set<number>>(new Set());
+  const [shareSearchQuery, setShareSearchQuery] = useState("");
+  const [friendsSent, setFriendsSent] = useState<Set<number>>(new Set());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [audioEcho, setAudioEcho] = useState(false);
+  const [audioReverb, setAudioReverb] = useState(false);
+  const [audioSpeed, setAudioSpeed] = useState("1x");
+  const [contentPrefs, setContentPrefs] = useState({
+    Fitness: true,
+    Food: true,
+    Travel: true,
+    Music: true,
+    Fashion: true,
+    Gaming: true,
+    Comedy: true,
+  });
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -3295,8 +3328,8 @@ function ReelsPage({
     );
   }
 
-  function handleShare() {
-    toast.success("Reel shared! 📤");
+  function handleShare(reelId: number) {
+    setShowShareSheet(reelId);
   }
 
   function handleBookmark(id: number) {
@@ -3321,9 +3354,30 @@ function ReelsPage({
     const now = Date.now();
     const last = lastTapRef.current[reelId] ?? 0;
     if (now - last < 300) {
+      // double tap = like
       handleLike(reelId);
       setDoubleTapId(reelId);
       setTimeout(() => setDoubleTapId(null), 600);
+    } else {
+      // single tap = pause/play (with delay to wait for potential double tap)
+      setTimeout(() => {
+        const timeSinceLast = Date.now() - (lastTapRef.current[reelId] ?? 0);
+        if (timeSinceLast >= 300) {
+          setPausedReels((prev) => {
+            const next = new Set(prev);
+            const vidIdx = reels.findIndex((r) => r.id === reelId);
+            const vid = videoRefs.current[vidIdx];
+            if (next.has(reelId)) {
+              next.delete(reelId);
+              vid?.play().catch(() => {});
+            } else {
+              next.add(reelId);
+              vid?.pause();
+            }
+            return next;
+          });
+        }
+      }, 320);
     }
     lastTapRef.current[reelId] = now;
   }
@@ -3380,6 +3434,72 @@ function ReelsPage({
           />
         ))}
       </div>
+      {/* Trending Section */}
+      <div className="bg-black/90 px-4 py-3 border-b border-white/10">
+        <div className="mb-3">
+          <p className="text-white text-xs font-semibold mb-2">
+            🔥 Trending Now
+          </p>
+          <div
+            className="flex gap-2 overflow-x-auto pb-1"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {reels.slice(0, 5).map((r, idx) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() =>
+                  reelRefs.current[idx]?.scrollIntoView({ behavior: "smooth" })
+                }
+                className="flex-shrink-0 w-16 h-24 rounded-lg overflow-hidden relative"
+              >
+                <img
+                  src={r.image}
+                  alt="trending"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                  <Play className="w-4 h-4 text-white fill-white" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="text-white text-xs font-semibold mb-2">
+            🎵 Trending Songs
+          </p>
+          <div
+            className="flex gap-2 overflow-x-auto pb-1"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {[
+              "Shape of You",
+              "Blinding Lights",
+              "Levitating",
+              "Stay",
+              "As It Was",
+            ].map((song, si) => (
+              <button
+                key={song}
+                type="button"
+                onClick={() => toast.success(`${song} selected! 🎵`)}
+                className="flex-shrink-0 flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1.5 border border-white/20"
+              >
+                <span className="text-white text-xs">🎵</span>
+                <div className="text-left">
+                  <p className="text-white text-xs font-medium whitespace-nowrap">
+                    {song}
+                  </p>
+                  <p className="text-white/60 text-[10px]">
+                    {(1.2 + si * 0.4).toFixed(1)}K Reels
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
       <div className="reels-fullscreen-container" data-ocid="reels.page">
         {/* Desktop nav arrows */}
         <div className="hidden md:flex flex-col gap-3 absolute right-6 top-1/2 -translate-y-1/2 z-50">
@@ -3413,218 +3533,922 @@ function ReelsPage({
           </button>
         </div>
         <div className="snap-container" ref={snapContainerRef}>
-          {reels.map((reel, i) => (
-            <div
-              key={reel.id}
-              ref={(el) => {
-                reelRefs.current[i] = el;
-              }}
-              data-reel-index={i}
-              className="snap-item relative w-full flex-shrink-0"
-              style={{ height: "100%" }}
-              onClick={() => handleTap(reel.id)}
-              onKeyDown={(e) => e.key === "Enter" && handleTap(reel.id)}
-              data-ocid={`reels.item.${i + 1}`}
-            >
-              {reel.videoUrl ? (
-                <video
-                  ref={(el) => {
-                    videoRefs.current[i] = el;
-                  }}
-                  src={reel.videoUrl}
-                  muted={!soundOn}
-                  loop
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <img
-                  src={reel.image}
-                  alt="reel"
-                  className="w-full h-full object-cover"
-                />
-              )}
-              {/* Gradient overlay */}
+          {reels
+            .filter((r) => !hiddenReelIds.has(r.id))
+            .map((reel, i) => (
               <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background:
-                    "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 40%, transparent 70%)",
+                key={reel.id}
+                ref={(el) => {
+                  reelRefs.current[i] = el;
                 }}
-              />
-              {/* Double-tap heart animation */}
-              {doubleTapId === reel.id && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                  <span className="text-6xl animate-ping">❤️</span>
-                </div>
-              )}
-              {/* Bottom info */}
-              <div
-                className="absolute bottom-6 left-4 right-16 pointer-events-none"
-                style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                data-reel-index={i}
+                className="snap-item relative w-full flex-shrink-0"
+                style={{ height: "100%" }}
+                onClick={() => handleTap(reel.id)}
+                onKeyDown={(e) => e.key === "Enter" && handleTap(reel.id)}
+                data-ocid={`reels.item.${i + 1}`}
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <Avatar className="w-9 h-9 border-2 border-white">
-                    <AvatarImage src={reel.user.avatar} alt={reel.user.name} />
-                    <AvatarFallback>{reel.user.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <span className="text-white text-sm font-semibold">
-                    {reel.user.username}
-                  </span>
+                {reel.videoUrl ? (
+                  <video
+                    ref={(el) => {
+                      videoRefs.current[i] = el;
+                    }}
+                    src={reel.videoUrl}
+                    muted={!soundOn}
+                    loop
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={reel.image}
+                    alt="reel"
+                    className="w-full h-full object-cover"
+                  />
+                )}
+                {/* Gradient overlay */}
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background:
+                      "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 40%, transparent 70%)",
+                  }}
+                />
+                {/* Pause/Play indicator */}
+                {pausedReels.has(reel.id) && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                    <div className="bg-black/40 rounded-full p-4">
+                      <Play className="w-10 h-10 text-white fill-white" />
+                    </div>
+                  </div>
+                )}
+                {/* Double-tap heart animation */}
+                {doubleTapId === reel.id && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                    <span className="text-6xl animate-ping">❤️</span>
+                  </div>
+                )}
+                {/* Bottom info */}
+                <div
+                  className="absolute bottom-6 left-4 right-16 pointer-events-none"
+                  style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                >
+                  {/* Friends watching */}
+                  {activeIndex === i && (
+                    <div className="flex items-center gap-1 mb-2 pointer-events-none">
+                      <div className="flex -space-x-1">
+                        {["P", "A", "M"].map((l) => (
+                          <div
+                            key={l}
+                            className="w-5 h-5 rounded-full bg-gradient-to-br from-pink-400 to-violet-500 border border-white flex items-center justify-center text-white text-[8px] font-bold"
+                          >
+                            {l}
+                          </div>
+                        ))}
+                      </div>
+                      <span className="text-white text-[11px] ml-1">
+                        priya_s, arjun_v +3 watching
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mb-2">
+                    <Avatar className="w-9 h-9 border-2 border-white">
+                      <AvatarImage
+                        src={reel.user.avatar}
+                        alt={reel.user.name}
+                      />
+                      <AvatarFallback>{reel.user.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-white text-sm font-semibold">
+                      {reel.user.username}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFollowedUsers((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(reel.user.id)) {
+                            next.delete(reel.user.id);
+                          } else {
+                            next.add(reel.user.id);
+                          }
+                          return next;
+                        });
+                      }}
+                      className={`text-xs px-3 py-0.5 rounded-full pointer-events-auto transition-all ${
+                        followedUsers.has(reel.user.id)
+                          ? "bg-white/20 border border-white/50 text-white/80"
+                          : "border border-white text-white"
+                      }`}
+                      data-ocid={`reels.item.${i + 1}.button`}
+                    >
+                      {followedUsers.has(reel.user.id) ? "Following" : "Follow"}
+                    </button>
+                  </div>
+                  <p className="text-white text-sm">{reel.caption}</p>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setFollowedUsers((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(reel.user.id)) {
-                          next.delete(reel.user.id);
-                        } else {
-                          next.add(reel.user.id);
-                        }
-                        return next;
-                      });
+                      setShowAudioSheet(reel.id);
                     }}
-                    className={`text-xs px-3 py-0.5 rounded-full pointer-events-auto transition-all ${
-                      followedUsers.has(reel.user.id)
-                        ? "bg-white/20 border border-white/50 text-white/80"
-                        : "border border-white text-white"
-                    }`}
-                    data-ocid={`reels.item.${i + 1}.button`}
+                    className="flex items-center gap-1 mt-2 text-white/80 text-xs pointer-events-auto cursor-pointer hover:text-white transition-colors"
                   >
-                    {followedUsers.has(reel.user.id) ? "Following" : "Follow"}
+                    <Music
+                      className="w-3 h-3 animate-spin"
+                      style={{ animationDuration: "3s" }}
+                    />
+                    <span>Original Audio • {reel.user.name}</span>
                   </button>
                 </div>
-                <p className="text-white text-sm">{reel.caption}</p>
-                <div className="flex items-center gap-1 mt-2 text-white/80 text-xs">
-                  <Music className="w-3 h-3" />
-                  <span>Original Audio • {reel.user.name}</span>
-                </div>
-              </div>
-              {/* Swipe up hint — first reel only */}
-              {i === 0 && (
-                <div className="reel-swipe-hint absolute bottom-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none z-10">
-                  <span
-                    className="text-white/80 text-xs"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
-                  >
-                    ↑ Swipe up
-                  </span>
-                </div>
-              )}
-              {/* Sound toggle — top right */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSoundOn((s) => !s);
-                }}
-                className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/40 backdrop-blur-sm"
-                style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
-                data-ocid={`reels.item.${i + 1}.toggle`}
-              >
-                {soundOn ? (
-                  <Volume2 className="w-5 h-5 text-white" />
-                ) : (
-                  <VolumeX className="w-5 h-5 text-white" />
+                {/* Swipe up hint — first reel only */}
+                {i === 0 && (
+                  <div className="reel-swipe-hint absolute bottom-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none z-10">
+                    <span
+                      className="text-white/80 text-xs"
+                      style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    >
+                      ↑ Swipe up
+                    </span>
+                  </div>
                 )}
-              </button>
-              {/* Right actions */}
-              <div className="absolute right-4 bottom-6 flex flex-col items-center gap-6">
-                {/* Like */}
+                {/* More options — top left */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleLike(reel.id);
+                    setShowMoreSheet(reel.id);
                   }}
-                  className="flex flex-col items-center gap-1"
+                  className="absolute top-4 left-4 z-10 p-2 rounded-full bg-black/40 backdrop-blur-sm text-white"
+                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                  data-ocid={`reels.item.${i + 1}.secondary_button`}
+                  aria-label="More options"
+                >
+                  <MoreVertical className="w-5 h-5 text-white" />
+                </button>
+                {/* Fullscreen — top right -2nd */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isFullscreen) {
+                      document.documentElement
+                        .requestFullscreen?.()
+                        .catch(() => {});
+                    } else {
+                      document.exitFullscreen?.().catch(() => {});
+                    }
+                  }}
+                  className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/40 backdrop-blur-sm"
+                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                  data-ocid={`reels.item.${i + 1}.toggle`}
+                  aria-label="Toggle fullscreen"
+                >
+                  {isFullscreen ? (
+                    <Minimize className="w-5 h-5 text-white" />
+                  ) : (
+                    <Maximize className="w-5 h-5 text-white" />
+                  )}
+                </button>
+                {/* Sound toggle — top right */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSoundOn((s) => !s);
+                  }}
+                  className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/40 backdrop-blur-sm"
                   style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
                   data-ocid={`reels.item.${i + 1}.toggle`}
                 >
-                  <Heart
-                    className="w-7 h-7"
-                    style={{
-                      color: reel.isLiked ? "#E53935" : "white",
-                      fill: reel.isLiked ? "#E53935" : "none",
+                  {soundOn ? (
+                    <Volume2 className="w-5 h-5 text-white" />
+                  ) : (
+                    <VolumeX className="w-5 h-5 text-white" />
+                  )}
+                </button>
+                {/* Right actions */}
+                <div className="absolute right-4 bottom-6 flex flex-col items-center gap-6">
+                  {/* Like */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLike(reel.id);
                     }}
-                  />
-                  <span
-                    className="text-white text-xs"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    className="flex flex-col items-center gap-1"
+                    style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                    data-ocid={`reels.item.${i + 1}.toggle`}
                   >
-                    {formatCount(reel.likes)}
-                  </span>
-                </button>
-                {/* Comment */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setCommentReelId(reel.id);
-                  }}
-                  className="flex flex-col items-center gap-1"
-                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
-                  data-ocid={`reels.item.${i + 1}.open_modal_button`}
-                >
-                  <MessageCircle className="w-7 h-7 text-white" />
-                  <span
-                    className="text-white text-xs"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    <Heart
+                      className="w-7 h-7"
+                      style={{
+                        color: reel.isLiked ? "#E53935" : "white",
+                        fill: reel.isLiked ? "#E53935" : "none",
+                      }}
+                    />
+                    <span
+                      className="text-white text-xs"
+                      style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    >
+                      {formatCount(reel.likes)}
+                    </span>
+                  </button>
+                  {/* Comment */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCommentReelId(reel.id);
+                    }}
+                    className="flex flex-col items-center gap-1"
+                    style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                    data-ocid={`reels.item.${i + 1}.open_modal_button`}
                   >
-                    {formatCount(reel.comments)}
-                  </span>
-                </button>
-                {/* Share */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleShare();
-                  }}
-                  className="flex flex-col items-center gap-1"
-                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
-                  data-ocid={`reels.item.${i + 1}.secondary_button`}
-                >
-                  <Send className="w-7 h-7 text-white" />
-                  <span
-                    className="text-white text-xs"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    <MessageCircle className="w-7 h-7 text-white" />
+                    <span
+                      className="text-white text-xs"
+                      style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    >
+                      {formatCount(reel.comments)}
+                    </span>
+                  </button>
+                  {/* Share */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShare(reel.id);
+                    }}
+                    className="flex flex-col items-center gap-1"
+                    style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                    data-ocid={`reels.item.${i + 1}.secondary_button`}
                   >
-                    Share
-                  </span>
-                </button>
+                    <Send className="w-7 h-7 text-white" />
+                    <span
+                      className="text-white text-xs"
+                      style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    >
+                      Share
+                    </span>
+                  </button>
 
-                {/* Save/Bookmark */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleBookmark(reel.id);
-                  }}
-                  className="flex flex-col items-center gap-1"
-                  style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
-                  data-ocid={`reels.item.${i + 1}.bookmark_button`}
-                >
-                  <Bookmark
-                    className="w-7 h-7"
-                    style={{
-                      color: savedReels.has(reel.id) ? "#FACC15" : "white",
-                      fill: savedReels.has(reel.id) ? "#FACC15" : "none",
+                  {/* Save/Bookmark */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleBookmark(reel.id);
                     }}
-                  />
-                  <span
-                    className="text-white text-xs"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    className="flex flex-col items-center gap-1"
+                    style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}
+                    data-ocid={`reels.item.${i + 1}.bookmark_button`}
                   >
-                    {savedReels.has(reel.id) ? "Saved" : "Save"}
-                  </span>
-                </button>
+                    <Bookmark
+                      className="w-7 h-7"
+                      style={{
+                        color: savedReels.has(reel.id) ? "#FACC15" : "white",
+                        fill: savedReels.has(reel.id) ? "#FACC15" : "none",
+                      }}
+                    />
+                    <span
+                      className="text-white text-xs"
+                      style={{ textShadow: "0 1px 3px rgba(0,0,0,0.8)" }}
+                    >
+                      {savedReels.has(reel.id) ? "Saved" : "Save"}
+                    </span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
+
+      {/* Share Sheet */}
+      {showShareSheet !== null && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-50"
+            onClick={() => setShowShareSheet(null)}
+            onKeyDown={(e) => e.key === "Escape" && setShowShareSheet(null)}
+          />
+          <div
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto"
+            data-ocid="reels.sheet"
+          >
+            <div className="w-12 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mb-4" />
+            <h3 className="font-semibold text-base dark:text-white mb-3">
+              Share Reel
+            </h3>
+            <input
+              value={shareSearchQuery}
+              onChange={(e) => setShareSearchQuery(e.target.value)}
+              placeholder="Search friends..."
+              className="w-full rounded-full bg-zinc-100 dark:bg-zinc-800 dark:text-white px-4 py-2 text-sm mb-4 outline-none"
+              data-ocid="reels.search_input"
+            />
+            <p className="text-xs text-zinc-400 mb-2 font-medium uppercase tracking-wide">
+              Quick Actions
+            </p>
+            <div
+              className="flex gap-3 overflow-x-auto pb-2 mb-4"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {[
+                {
+                  icon: "🔁",
+                  label: "Remix",
+                  action: () => {
+                    setShowRemixConfirm(showShareSheet);
+                    setShowShareSheet(null);
+                  },
+                },
+                {
+                  icon: "📖",
+                  label: "Add to Story",
+                  action: () => {
+                    toast.success("Added to your story! ✨");
+                    setShowShareSheet(null);
+                  },
+                },
+                {
+                  icon: "💬",
+                  label: "WhatsApp",
+                  action: () => {
+                    toast.success("Opening WhatsApp... 💬");
+                    setShowShareSheet(null);
+                  },
+                },
+                {
+                  icon: "📱",
+                  label: "WA Status",
+                  action: () => {
+                    toast.success("Added to WhatsApp Status! 📱");
+                    setShowShareSheet(null);
+                  },
+                },
+                {
+                  icon: "💌",
+                  label: "SMS",
+                  action: () => {
+                    toast.success("Opening SMS... 💌");
+                    setShowShareSheet(null);
+                  },
+                },
+                {
+                  icon: "🔗",
+                  label: "Copy Link",
+                  action: () => {
+                    navigator.clipboard
+                      ?.writeText(
+                        `https://connectly.app/reel/${showShareSheet}`,
+                      )
+                      .catch(() => {});
+                    toast.success("Link copied! 🔗");
+                    setShowShareSheet(null);
+                  },
+                },
+                {
+                  icon: "⬇️",
+                  label: "Download",
+                  action: () => {
+                    toast.success("Downloading reel... ⬇️");
+                    setShowShareSheet(null);
+                  },
+                },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.action}
+                  className="flex flex-col items-center gap-1 flex-shrink-0"
+                  data-ocid="reels.button"
+                >
+                  <div className="w-14 h-14 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-2xl">
+                    {item.icon}
+                  </div>
+                  <span className="text-xs dark:text-white whitespace-nowrap">
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-zinc-400 mb-2 font-medium uppercase tracking-wide">
+              Share to other apps
+            </p>
+            <div
+              className="flex gap-3 overflow-x-auto pb-2 mb-4"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {[
+                {
+                  icon: "📸",
+                  label: "Instagram",
+                  action: () => toast.success("Opening Instagram..."),
+                },
+                {
+                  icon: "🐦",
+                  label: "Twitter/X",
+                  action: () => toast.success("Opening Twitter/X..."),
+                },
+                {
+                  icon: "✈️",
+                  label: "Telegram",
+                  action: () => toast.success("Opening Telegram..."),
+                },
+                {
+                  icon: "📧",
+                  label: "Email",
+                  action: () => toast.success("Opening Email..."),
+                },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => {
+                    item.action();
+                    setShowShareSheet(null);
+                  }}
+                  className="flex flex-col items-center gap-1 flex-shrink-0"
+                  data-ocid="reels.button"
+                >
+                  <div className="w-14 h-14 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-2xl">
+                    {item.icon}
+                  </div>
+                  <span className="text-xs dark:text-white whitespace-nowrap">
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-zinc-400 mb-2 font-medium uppercase tracking-wide">
+              Send to friends
+            </p>
+            <div className="space-y-2">
+              {USERS.filter((u) =>
+                u.name.toLowerCase().includes(shareSearchQuery.toLowerCase()),
+              )
+                .slice(0, 5)
+                .map((u) => (
+                  <div key={u.id} className="flex items-center gap-3">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={u.avatar} />
+                      <AvatarFallback>{u.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium dark:text-white">
+                        {u.name}
+                      </p>
+                      <p className="text-xs text-zinc-400">@{u.username}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFriendsSent((prev) => new Set([...prev, u.id]));
+                        toast.success(`Sent to ${u.name}! 🚀`);
+                      }}
+                      className={`text-xs px-4 py-1.5 rounded-full font-medium ${friendsSent.has(u.id) ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-400" : "bg-gradient-to-r from-pink-500 to-violet-500 text-white"}`}
+                      data-ocid="reels.button"
+                    >
+                      {friendsSent.has(u.id) ? "Sent ✓" : "Send"}
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Remix Confirm Modal */}
+      {showRemixConfirm !== null && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-50"
+            onClick={() => setShowRemixConfirm(null)}
+            onKeyDown={(e) => e.key === "Escape" && setShowRemixConfirm(null)}
+          />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-zinc-900 rounded-2xl p-6 w-80"
+            data-ocid="reels.dialog"
+          >
+            <h3 className="font-semibold text-base dark:text-white mb-2">
+              Create Remix?
+            </h3>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">
+              This will add a remixed version to your reels.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowRemixConfirm(null)}
+                className="flex-1 py-2 rounded-full border border-zinc-300 dark:border-zinc-700 text-sm dark:text-white"
+                data-ocid="reels.cancel_button"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const orig = reels.find((r) => r.id === showRemixConfirm);
+                  if (orig) {
+                    const remixed: Reel = {
+                      ...orig,
+                      id: Date.now(),
+                      caption: `🔁 Remix: ${orig.caption}`,
+                      likes: 0,
+                      comments: 0,
+                      isLiked: false,
+                    };
+                    setReels((prev) => [remixed, ...prev]);
+                    toast.success("Remix created! 🔁");
+                  }
+                  setShowRemixConfirm(null);
+                }}
+                className="flex-1 py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+                data-ocid="reels.confirm_button"
+              >
+                Remix
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* More Options Sheet */}
+      {showMoreSheet !== null && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-50"
+            onClick={() => setShowMoreSheet(null)}
+            onKeyDown={(e) => e.key === "Escape" && setShowMoreSheet(null)}
+          />
+          <div
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 rounded-t-2xl p-4"
+            data-ocid="reels.sheet"
+          >
+            <div className="w-12 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mb-4" />
+            <div className="space-y-1">
+              {[
+                {
+                  icon: "🤖",
+                  label: "AI Information",
+                  action: () => {
+                    setShowAIDialog(true);
+                    setShowMoreSheet(null);
+                  },
+                },
+                {
+                  icon: "❓",
+                  label: "Why you're seeing this",
+                  action: () => {
+                    setShowWhyDialog(true);
+                    setShowMoreSheet(null);
+                  },
+                },
+                {
+                  icon: "👍",
+                  label: "Interested",
+                  action: () => {
+                    toast.success("Got it! We'll show you more like this 👍");
+                    setShowMoreSheet(null);
+                  },
+                },
+                {
+                  icon: "👎",
+                  label: "Not Interested",
+                  action: () => {
+                    setHiddenReelIds(
+                      (prev) => new Set([...prev, showMoreSheet!]),
+                    );
+                    toast.success("We'll show you less like this");
+                    setShowMoreSheet(null);
+                  },
+                },
+                {
+                  icon: "🚩",
+                  label: "Report",
+                  action: () => {
+                    toast.success(
+                      "Report submitted. We'll review this content.",
+                    );
+                    setShowMoreSheet(null);
+                  },
+                },
+                {
+                  icon: "⚙️",
+                  label: "Manage Content Preferences",
+                  action: () => {
+                    setShowPrefsDialog(true);
+                    setShowMoreSheet(null);
+                  },
+                },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={item.action}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 text-left"
+                  data-ocid="reels.button"
+                >
+                  <span className="text-xl">{item.icon}</span>
+                  <span className="text-sm font-medium dark:text-white">
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* AI Info Dialog */}
+      {showAIDialog && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-50"
+            onClick={() => setShowAIDialog(false)}
+            onKeyDown={(e) => e.key === "Escape" && setShowAIDialog(false)}
+          />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-zinc-900 rounded-2xl p-6 w-80 max-w-[90vw]"
+            data-ocid="reels.dialog"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl">🤖</span>
+              <h3 className="font-semibold dark:text-white">AI Information</h3>
+            </div>
+            <div className="space-y-2 text-sm text-zinc-600 dark:text-zinc-300">
+              <p>
+                <span className="font-medium dark:text-white">
+                  Content Category:
+                </span>{" "}
+                Outdoor Fitness & Lifestyle
+              </p>
+              <p>
+                <span className="font-medium dark:text-white">Engagement:</span>{" "}
+                High (Top 5% this week)
+              </p>
+              <p>
+                <span className="font-medium dark:text-white">Keywords:</span>{" "}
+                motivation, fitness, goals, lifestyle
+              </p>
+              <p>
+                <span className="font-medium dark:text-white">
+                  Recommended for:
+                </span>{" "}
+                Health, Sports, Lifestyle
+              </p>
+              <p>
+                <span className="font-medium dark:text-white">
+                  Creator Score:
+                </span>{" "}
+                ⭐ 4.8/5.0
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAIDialog(false)}
+              className="mt-4 w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+              data-ocid="reels.confirm_button"
+            >
+              Got it
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Why Seeing Dialog */}
+      {showWhyDialog && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-50"
+            onClick={() => setShowWhyDialog(false)}
+            onKeyDown={(e) => e.key === "Escape" && setShowWhyDialog(false)}
+          />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-zinc-900 rounded-2xl p-6 w-80 max-w-[90vw]"
+            data-ocid="reels.dialog"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl">❓</span>
+              <h3 className="font-semibold dark:text-white">
+                Why you&apos;re seeing this
+              </h3>
+            </div>
+            <div className="space-y-2 text-sm text-zinc-600 dark:text-zinc-300">
+              <p>You&apos;re seeing this reel because:</p>
+              <ul className="list-disc ml-4 space-y-1">
+                <li>You&apos;ve watched similar fitness content</li>
+                <li>You follow this creator</li>
+                <li>This is trending in your area</li>
+                <li>Your interests include Health &amp; Fitness</li>
+              </ul>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowWhyDialog(false)}
+              className="mt-4 w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+              data-ocid="reels.confirm_button"
+            >
+              Got it
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Manage Preferences Dialog */}
+      {showPrefsDialog && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-50"
+            onClick={() => setShowPrefsDialog(false)}
+            onKeyDown={(e) => e.key === "Escape" && setShowPrefsDialog(false)}
+          />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white dark:bg-zinc-900 rounded-2xl p-6 w-80 max-w-[90vw] max-h-[80vh] overflow-y-auto"
+            data-ocid="reels.dialog"
+          >
+            <h3 className="font-semibold dark:text-white mb-4">
+              ⚙️ Content Preferences
+            </h3>
+            <div className="space-y-3">
+              {(
+                Object.entries(contentPrefs) as [
+                  keyof typeof contentPrefs,
+                  boolean,
+                ][]
+              ).map(([key, val]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <span className="text-sm dark:text-white">{key}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setContentPrefs((prev) => ({
+                        ...prev,
+                        [key]: !prev[key],
+                      }))
+                    }
+                    className={`w-12 h-6 rounded-full transition-colors relative ${val ? "bg-gradient-to-r from-pink-500 to-violet-500" : "bg-zinc-300 dark:bg-zinc-600"}`}
+                    data-ocid="reels.toggle"
+                  >
+                    <span
+                      className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${val ? "translate-x-6" : "translate-x-0.5"}`}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPrefsDialog(false);
+                toast.success("Preferences saved! ✨");
+              }}
+              className="mt-4 w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+              data-ocid="reels.save_button"
+            >
+              Save
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Audio Info Sheet */}
+      {showAudioSheet !== null && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-50"
+            onClick={() => setShowAudioSheet(null)}
+            onKeyDown={(e) => e.key === "Escape" && setShowAudioSheet(null)}
+          />
+          <div
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 rounded-t-2xl p-4 max-h-[75vh] overflow-y-auto"
+            data-ocid="reels.sheet"
+          >
+            <div className="w-12 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mb-4" />
+            {(() => {
+              const audioReel = reels.find((r) => r.id === showAudioSheet);
+              return audioReel ? (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
+                      <img
+                        src={audioReel.image}
+                        alt="audio"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div>
+                      <p className="font-semibold dark:text-white text-sm">
+                        Original Audio
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {audioReel.user.name}
+                      </p>
+                      <p className="text-xs text-violet-500 font-medium mt-0.5">
+                        2.4K Reels made with this audio
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toast.success("Audio selected! 🎵");
+                      setShowAudioSheet(null);
+                    }}
+                    className="w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium mb-4"
+                    data-ocid="reels.button"
+                  >
+                    🎵 Use Audio
+                  </button>
+                  <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-2">
+                    Sound Effects
+                  </p>
+                  <div className="flex gap-3 mb-3">
+                    {(
+                      [
+                        { label: "Echo", val: audioEcho, set: setAudioEcho },
+                        {
+                          label: "Reverb",
+                          val: audioReverb,
+                          set: setAudioReverb,
+                        },
+                      ] as const
+                    ).map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() =>
+                          (
+                            item.set as React.Dispatch<
+                              React.SetStateAction<boolean>
+                            >
+                          )(!item.val)
+                        }
+                        className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${item.val ? "bg-violet-500 text-white border-violet-500" : "border-zinc-300 dark:border-zinc-700 dark:text-white"}`}
+                        data-ocid="reels.toggle"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-2">
+                    Speed
+                  </p>
+                  <div className="flex gap-2 mb-4">
+                    {["0.5x", "1x", "1.5x", "2x"].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setAudioSpeed(s)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${audioSpeed === s ? "bg-pink-500 text-white border-pink-500" : "border-zinc-300 dark:border-zinc-700 dark:text-white"}`}
+                        data-ocid="reels.toggle"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-2">
+                    Reels with this audio
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {reels.slice(0, 6).map((r) => (
+                      <div
+                        key={r.id}
+                        className="aspect-[9/16] rounded-lg overflow-hidden relative"
+                      >
+                        <img
+                          src={r.image}
+                          alt="reel"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                          <Play className="w-5 h-5 text-white fill-white" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null;
+            })()}
+          </div>
+        </>
+      )}
 
       {/* Comments bottom sheet */}
       {commentReelId !== null && (
