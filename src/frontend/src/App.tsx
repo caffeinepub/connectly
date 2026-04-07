@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -72,7 +73,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -119,6 +120,7 @@ interface Post {
   isBookmarked?: boolean;
   location?: string;
   mood?: string;
+  websiteLink?: string;
 }
 
 interface Story {
@@ -220,6 +222,8 @@ interface ProfileState {
   username: string;
   bio: string;
   avatar: string;
+  coverPhoto?: string;
+  website?: string;
 }
 
 function useProfile() {
@@ -233,6 +237,8 @@ function useProfile() {
       username: CURRENT_USER.username,
       bio: CURRENT_USER.bio ?? "",
       avatar: CURRENT_USER.avatar,
+      coverPhoto: undefined,
+      website: "",
     };
   });
 
@@ -264,7 +270,12 @@ function EditProfileDialog({
   const [username, setUsername] = useState(profile.username);
   const [bio, setBio] = useState(profile.bio);
   const [avatar, setAvatar] = useState(profile.avatar);
+  const [website, setWebsite] = useState(profile.website ?? "");
+  const [coverPhoto, setCoverPhoto] = useState<string | undefined>(
+    profile.coverPhoto,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   // Sync when dialog opens
   useEffect(() => {
@@ -273,6 +284,8 @@ function EditProfileDialog({
       setUsername(profile.username);
       setBio(profile.bio);
       setAvatar(profile.avatar);
+      setWebsite(profile.website ?? "");
+      setCoverPhoto(profile.coverPhoto);
     }
   }, [open, profile]);
 
@@ -286,8 +299,18 @@ function EditProfileDialog({
     reader.readAsDataURL(file);
   }
 
+  function handleCoverFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setCoverPhoto(ev.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  }
+
   function handleSave() {
-    onSave({ name, username, bio, avatar });
+    onSave({ name, username, bio, avatar, website, coverPhoto });
     toast.success("Profile saved!");
     onClose();
   }
@@ -309,6 +332,50 @@ function EditProfileDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 mt-2 overflow-y-auto max-h-[80vh] pr-1">
+          {/* Cover Photo */}
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="edit-cover-photo"
+              className="text-xs font-medium"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              Cover Photo
+            </label>
+            <button
+              type="button"
+              id="edit-cover-photo"
+              onClick={() => coverInputRef.current?.click()}
+              className="relative w-full rounded-xl overflow-hidden border border-border hover:opacity-90 transition-opacity"
+              style={{
+                height: 64,
+                background: coverPhoto
+                  ? "transparent"
+                  : "linear-gradient(135deg, #7c3aed, #f97316)",
+              }}
+              data-ocid="edit_profile.cover.upload_button"
+            >
+              {coverPhoto && (
+                <img
+                  src={coverPhoto}
+                  alt="cover"
+                  className="w-full h-full object-cover"
+                />
+              )}
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                <span className="text-white text-xs font-semibold flex items-center gap-1">
+                  <Camera className="w-3 h-3" /> Change Cover Photo
+                </span>
+              </div>
+            </button>
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleCoverFileChange}
+            />
+          </div>
+
           {/* Avatar picker */}
           <div className="flex justify-center">
             <button
@@ -408,6 +475,25 @@ function EditProfileDialog({
             </p>
           </div>
 
+          {/* Website */}
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="edit-website"
+              className="text-xs font-medium"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              🔗 Website / Link
+            </label>
+            <Input
+              id="edit-website"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="https://yoursite.com"
+              className="rounded-lg"
+              data-ocid="edit_profile.website.input"
+            />
+          </div>
+
           {/* Actions */}
           <div className="flex gap-2 mt-1">
             <Button
@@ -421,7 +507,7 @@ function EditProfileDialog({
             <Button
               className="flex-1 rounded-xl text-white font-semibold"
               style={{
-                background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                background: "linear-gradient(135deg, #7c3aed, #f97316)",
                 border: "none",
               }}
               onClick={handleSave}
@@ -1099,7 +1185,7 @@ function CreateStoryDialog({
             onClick={handleShare}
             className="w-full font-semibold text-white"
             style={{
-              background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+              background: "linear-gradient(135deg, #7c3aed, #f97316)",
               border: "none",
             }}
             data-ocid="create_story.submit_button"
@@ -1130,7 +1216,7 @@ function StoryViewer({
   );
   const [showCommentInput, setShowCommentInput] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [shareCopied, setShareCopied] = useState(false);
+  const [showStoryShareSheet, setShowStoryShareSheet] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onCloseRef = useRef(onClose);
   const onSeenRef = useRef(onSeen);
@@ -1174,9 +1260,7 @@ function StoryViewer({
   }
 
   function handleShare() {
-    navigator.clipboard.writeText(window.location.href).catch(() => {});
-    setShareCopied(true);
-    setTimeout(() => setShareCopied(false), 2000);
+    setShowStoryShareSheet(true);
   }
 
   function handleSendComment() {
@@ -1218,14 +1302,34 @@ function StoryViewer({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-black/40"
-            data-ocid="story.close_button"
-          >
-            <X className="w-5 h-5 text-white" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowStoryShareSheet(true)}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-black/40"
+              data-ocid="story.secondary_button"
+              aria-label="Share story"
+            >
+              <Share2 className="w-4 h-4 text-white" />
+            </button>
+            <button
+              type="button"
+              onClick={() => toast.success("Story saved to device! ⬇️")}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-black/40"
+              data-ocid="story.download_button"
+              aria-label="Download story"
+            >
+              <Download className="w-4 h-4 text-white" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-black/40"
+              data-ocid="story.close_button"
+            >
+              <X className="w-5 h-5 text-white" />
+            </button>
+          </div>
         </div>
 
         {/* Story image - tap zones */}
@@ -1345,12 +1449,27 @@ function StoryViewer({
             data-ocid="story.primary_button"
           >
             <Send className="w-6 h-6 text-white" />
-            <span className="text-white text-xs">
-              {shareCopied ? "Copied!" : "Share"}
-            </span>
+            <span className="text-white text-xs">Share</span>
+          </button>
+
+          {/* Download */}
+          <button
+            type="button"
+            onClick={() => toast.success("Story saved to device! ⬇️")}
+            className="flex flex-col items-center gap-0.5"
+            data-ocid="story.download_button"
+          >
+            <Download className="w-6 h-6 text-white" />
+            <span className="text-white text-xs">Save</span>
           </button>
         </div>
       </div>
+      <GlobalShareSheet
+        open={showStoryShareSheet}
+        onClose={() => setShowStoryShareSheet(false)}
+        title={`${story.user.name}'s Story`}
+        url={window.location.href}
+      />
     </div>
   );
 }
@@ -1415,69 +1534,69 @@ function StoryAvatar({
 const MOCK_ADS = [
   {
     id: "ad1",
-    brand: "Nike",
+    brand: "Trendify",
     brandAvatar:
-      "https://api.dicebear.com/7.x/initials/svg?seed=Nike&backgroundColor=111111&fontColor=ffffff",
-    tagline: "Just Do It. Air Max 2025 — Drop Now.",
+      "https://api.dicebear.com/7.x/initials/svg?seed=Trendify&backgroundColor=e91e8c&fontColor=ffffff",
+    tagline: "Wear the Trend 🔥 New drops every week.",
     image:
       "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80",
     ctaLabel: "Shop Now",
-    ctaUrl: "https://nike.com",
+    ctaUrl: "#",
   },
   {
     id: "ad2",
-    brand: "Apple",
+    brand: "StyleHub",
     brandAvatar:
-      "https://api.dicebear.com/7.x/initials/svg?seed=Apple&backgroundColor=1c1c1e&fontColor=ffffff",
-    tagline: "iPhone 16 Pro. Shot on iPhone. Made for you.",
+      "https://api.dicebear.com/7.x/initials/svg?seed=StyleHub&backgroundColor=7c3aed&fontColor=ffffff",
+    tagline: "Style Redefined ✨ Premium fashion at your fingertips.",
     image:
-      "https://images.unsplash.com/photo-1512054502232-10a0a035d672?w=800&q=80",
-    ctaLabel: "Learn More",
-    ctaUrl: "https://apple.com",
+      "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80",
+    ctaLabel: "Explore",
+    ctaUrl: "#",
   },
   {
     id: "ad3",
-    brand: "Adidas",
+    brand: "ShopNow",
     brandAvatar:
-      "https://api.dicebear.com/7.x/initials/svg?seed=Adidas&backgroundColor=000000&fontColor=ffffff",
-    tagline: "Impossible is Nothing. New Ultraboost 25.",
+      "https://api.dicebear.com/7.x/initials/svg?seed=ShopNow&backgroundColor=0891b2&fontColor=ffffff",
+    tagline: "Best Deals Daily 🛍️ Unbeatable prices, everyday.",
     image:
-      "https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=800&q=80",
-    ctaLabel: "Buy Now",
-    ctaUrl: "https://adidas.com",
+      "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&q=80",
+    ctaLabel: "Get Offer",
+    ctaUrl: "#",
   },
   {
     id: "ad4",
-    brand: "Samsung",
+    brand: "VibeWear",
     brandAvatar:
-      "https://api.dicebear.com/7.x/initials/svg?seed=Samsung&backgroundColor=1428a0&fontColor=ffffff",
-    tagline: "Galaxy S25 Ultra. The AI phone of the future.",
+      "https://api.dicebear.com/7.x/initials/svg?seed=VibeWear&backgroundColor=d97706&fontColor=ffffff",
+    tagline: "Express Your Vibe 💫 Streetwear for the bold.",
     image:
-      "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=800&q=80",
-    ctaLabel: "Explore",
-    ctaUrl: "https://samsung.com",
+      "https://images.unsplash.com/photo-1608231387042-66d1773070a5?w=800&q=80",
+    ctaLabel: "Shop",
+    ctaUrl: "#",
   },
   {
     id: "ad5",
-    brand: "Zara",
+    brand: "TechZone",
     brandAvatar:
-      "https://api.dicebear.com/7.x/initials/svg?seed=Zara&backgroundColor=222222&fontColor=ffffff",
-    tagline: "New Season arrivals. Style that speaks.",
+      "https://api.dicebear.com/7.x/initials/svg?seed=TechZone&backgroundColor=1e3a5f&fontColor=ffffff",
+    tagline: "Latest Gadgets 📱 Tech that powers your life.",
     image:
-      "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80",
-    ctaLabel: "Shop Collection",
-    ctaUrl: "https://zara.com",
+      "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=800&q=80",
+    ctaLabel: "Buy Now",
+    ctaUrl: "#",
   },
   {
     id: "ad6",
-    brand: "Spotify",
+    brand: "SoundBurst",
     brandAvatar:
-      "https://api.dicebear.com/7.x/initials/svg?seed=Spotify&backgroundColor=1db954&fontColor=ffffff",
-    tagline: "Your music. Your podcasts. All in one place.",
+      "https://api.dicebear.com/7.x/initials/svg?seed=SoundBurst&backgroundColor=16a34a&fontColor=ffffff",
+    tagline: "Music for Every Mood 🎵 Unlimited streaming, zero limits.",
     image:
       "https://images.unsplash.com/photo-1614680376573-df3480f0c6ff?w=800&q=80",
-    ctaLabel: "Try Free",
-    ctaUrl: "https://spotify.com",
+    ctaLabel: "Listen",
+    ctaUrl: "#",
   },
 ];
 
@@ -1506,7 +1625,7 @@ function AdCard({ adIndex }: { adIndex: number }) {
               {ad.brand}
             </p>
             <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
-              Sponsored
+              Sponsored · Demo Ad
             </p>
           </div>
         </div>
@@ -1547,146 +1666,241 @@ function AdCard({ adIndex }: { adIndex: number }) {
   );
 }
 
-// ─── SHARE TO FRIEND MODAL ────────────────────────────────────────────────────
-function ShareToFriendModal({
+// ─── GLOBAL SHARE SHEET ──────────────────────────────────────────────────────
+
+function GlobalShareSheet({
   open,
   onClose,
+  title,
+  url,
 }: {
   open: boolean;
   onClose: () => void;
+  title?: string;
+  url?: string;
 }) {
-  const [search, setSearch] = useState("");
-  const filtered = USERS.filter(
-    (u) =>
-      search === "" ||
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.username.toLowerCase().includes(search.toLowerCase()),
-  );
+  const shareUrl = url || window.location.href;
+  const shareTitle = title || "Check this out on Connectly!";
 
-  function handleShare(u: AppUser) {
-    toast.success(`Post shared with @${u.username}! 📤`);
-    onClose();
-  }
+  const shareOptions = [
+    {
+      label: "WhatsApp",
+      emoji: "💬",
+      bg: "#25D366",
+      color: "#fff",
+      action: () => {
+        window.open(
+          `https://wa.me/?text=${encodeURIComponent(`${shareTitle} ${shareUrl}`)}`,
+          "_blank",
+        );
+        onClose();
+      },
+    },
+    {
+      label: "WA Status",
+      emoji: "📱",
+      bg: "#075E54",
+      color: "#fff",
+      action: () => {
+        toast.success("Added to WhatsApp Status! 📱");
+        onClose();
+      },
+    },
+    {
+      label: "Instagram",
+      emoji: "📸",
+      bg: "linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)",
+      color: "#fff",
+      action: () => {
+        toast.success("Opening Instagram... 📸");
+        onClose();
+      },
+    },
+    {
+      label: "Twitter/X",
+      emoji: "🐦",
+      bg: "#000",
+      color: "#fff",
+      action: () => {
+        window.open(
+          `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareTitle)}&url=${encodeURIComponent(shareUrl)}`,
+          "_blank",
+        );
+        onClose();
+      },
+    },
+    {
+      label: "Facebook",
+      emoji: "👍",
+      bg: "#1877F2",
+      color: "#fff",
+      action: () => {
+        window.open(
+          `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`,
+          "_blank",
+        );
+        onClose();
+      },
+    },
+    {
+      label: "Telegram",
+      emoji: "✈️",
+      bg: "#229ED9",
+      color: "#fff",
+      action: () => {
+        window.open(
+          `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`,
+          "_blank",
+        );
+        onClose();
+      },
+    },
+    {
+      label: "Email",
+      emoji: "📧",
+      bg: "#6B7280",
+      color: "#fff",
+      action: () => {
+        window.open(
+          `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(`${shareTitle} ${shareUrl}`)}`,
+          "_blank",
+        );
+        onClose();
+      },
+    },
+    {
+      label: "SMS",
+      emoji: "💌",
+      bg: "#22C55E",
+      color: "#fff",
+      action: () => {
+        window.open(
+          `sms:?body=${encodeURIComponent(`${shareTitle} ${shareUrl}`)}`,
+          "_blank",
+        );
+        onClose();
+      },
+    },
+    {
+      label: "Copy Link",
+      emoji: "🔗",
+      bg: "#6B7280",
+      color: "#fff",
+      action: () => {
+        navigator.clipboard?.writeText(shareUrl).catch(() => {});
+        toast.success("Link copied! 🔗");
+        onClose();
+      },
+    },
+    {
+      label: "Download",
+      emoji: "⬇️",
+      bg: "#F97316",
+      color: "#fff",
+      action: () => {
+        const a = document.createElement("a");
+        a.href = shareUrl;
+        a.download = "connectly";
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast.success("Downloaded! ⬇️");
+        onClose();
+      },
+    },
+    {
+      label: "Google",
+      emoji: "🔍",
+      bg: "#fff",
+      color: "#000",
+      action: () => {
+        window.open(
+          `https://www.google.com/search?q=${encodeURIComponent(shareTitle)}`,
+          "_blank",
+        );
+        onClose();
+      },
+    },
+    {
+      label: "Other Apps",
+      emoji: "🌐",
+      bg: "#374151",
+      color: "#fff",
+      action: () => {
+        if (navigator.share) {
+          navigator.share({ title: shareTitle, url: shareUrl }).catch(() => {});
+        } else {
+          navigator.clipboard?.writeText(shareUrl).catch(() => {});
+          toast.success("Link copied! Use browser to share 🌐");
+        }
+        onClose();
+      },
+    },
+  ];
 
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      className="fixed inset-0 z-[300] flex items-end justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
+      role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
       }}
-      role="presentation"
+      data-ocid="share.modal"
     >
       <div
-        className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden"
+        className="w-full max-w-lg rounded-t-3xl px-4 pt-4 pb-8"
         style={{ backgroundColor: "var(--app-card)" }}
-        data-ocid="share_friends.modal"
       >
-        <div
-          className="flex items-center justify-between px-4 py-3 border-b"
-          style={{ borderColor: "var(--app-border)" }}
+        <div className="w-10 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mb-4" />
+        <p
+          className="text-center text-sm font-semibold mb-4"
+          style={{ color: "var(--app-text)" }}
         >
-          <span
-            className="font-semibold text-sm"
-            style={{ color: "var(--app-text)" }}
-          >
-            Share with Friends
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded-full hover:bg-muted"
-            style={{ color: "var(--app-text-muted)" }}
-            data-ocid="share_friends.close_button"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="px-4 pt-3 pb-1">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search friends..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 py-2 pl-8 text-sm rounded-lg border outline-none"
-              style={{
-                backgroundColor: "var(--app-bg)",
-                borderColor: "var(--app-border)",
-                color: "var(--app-text)",
-              }}
-              data-ocid="share_friends.search_input"
-            />
-            <svg
-              aria-label="Search"
-              role="img"
-              className="absolute left-2.5 top-2.5 w-3.5 h-3.5"
-              style={{ color: "var(--app-text-muted)" }}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          Share
+        </p>
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          {shareOptions.map((opt) => (
+            <button
+              key={opt.label}
+              type="button"
+              onClick={opt.action}
+              className="flex flex-col items-center gap-1.5"
+              data-ocid="share.button"
             >
-              <title>Search</title>
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-          </div>
-        </div>
-        <div className="flex flex-col gap-0 max-h-72 overflow-y-auto px-4 py-2">
-          {filtered.length === 0 ? (
-            <p
-              className="text-sm text-center py-4"
-              style={{ color: "var(--app-text-muted)" }}
-            >
-              No users found
-            </p>
-          ) : (
-            filtered.map((u, i) => (
               <div
-                key={u.id}
-                className="flex items-center gap-3 py-2.5 border-b last:border-0"
-                style={{ borderColor: "var(--app-border)" }}
-                data-ocid={`share_friends.item.${i + 1}`}
+                className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-sm"
+                style={{
+                  background: opt.bg,
+                  color: opt.color,
+                  border: opt.bg === "#fff" ? "1px solid #e5e7eb" : "none",
+                }}
               >
-                <Avatar className="w-10 h-10 flex-shrink-0">
-                  <AvatarImage src={u.avatar} alt={u.name} />
-                  <AvatarFallback>{u.name[0]}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className="text-sm font-semibold truncate"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    {u.name}
-                  </p>
-                  <p
-                    className="text-xs truncate"
-                    style={{ color: "var(--app-text-muted)" }}
-                  >
-                    @{u.username}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  className="text-xs h-8 px-3 flex-shrink-0"
-                  onClick={() => handleShare(u)}
-                  data-ocid={`share_friends.secondary_button.${i + 1}`}
-                  style={{
-                    background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
-                    color: "white",
-                    border: "none",
-                  }}
-                >
-                  Send
-                </Button>
+                {opt.emoji}
               </div>
-            ))
-          )}
+              <span
+                className="text-xs text-center leading-tight"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                {opt.label}
+              </span>
+            </button>
+          ))}
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-3 rounded-2xl text-sm font-semibold"
+          style={{ backgroundColor: "var(--app-bg)", color: "var(--app-text)" }}
+          data-ocid="share.cancel_button"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );
@@ -1701,6 +1915,10 @@ function PostCard({
   onOpenUserProfile,
   onNotInterested,
   onReported,
+  followedUsers,
+  onToggleFollow,
+  favoritedPosts,
+  onToggleFavorite,
 }: {
   post: Post;
   onLike: (id: number) => void;
@@ -1709,6 +1927,10 @@ function PostCard({
   onOpenUserProfile?: (user: AppUser) => void;
   onNotInterested?: (id: number) => void;
   onReported?: (id: number) => void;
+  followedUsers?: Set<number>;
+  onToggleFollow?: (id: number) => void;
+  favoritedPosts?: Set<number>;
+  onToggleFavorite?: (id: number) => void;
 }) {
   const [likeScale, setLikeScale] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -1730,6 +1952,9 @@ function PostCard({
     "interested" | "not_interested" | null
   >(null);
   const [postReported, setPostReported] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [showWhyModal, setShowWhyModal] = useState(false);
 
   function handleLike() {
     setLikeScale(true);
@@ -1811,74 +2036,153 @@ function PostCard({
             </p>
           </div>
         </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <div className="flex items-center gap-2">
+          {post.user.id !== 0 && (
             <button
               type="button"
-              className="p-1 rounded-full hover:bg-muted active:scale-95 transition-transform duration-150"
-              style={{ color: "var(--app-text-muted)" }}
-              data-ocid={`feed.item.${post.id}.button`}
+              onClick={() => onToggleFollow?.(post.user.id)}
+              className="text-xs font-semibold px-3 py-1 rounded-full border transition-colors"
+              style={{
+                borderColor: followedUsers?.has(post.user.id)
+                  ? "var(--app-border)"
+                  : "var(--app-accent)",
+                color: followedUsers?.has(post.user.id)
+                  ? "var(--app-text-muted)"
+                  : "var(--app-accent)",
+              }}
+              data-ocid={`feed.item.${post.id}.follow_button`}
             >
-              <MoreHorizontal className="w-5 h-5" />
+              {followedUsers?.has(post.user.id) ? "Following" : "Follow"}
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem
-              onClick={() => {
-                setPostInterest("interested");
-                toast.success("👍 इस post में interest mark किया");
-              }}
-              className={
-                postInterest === "interested"
-                  ? "text-green-500 font-semibold"
-                  : ""
-              }
-            >
-              <ThumbsUp className="w-4 h-4 mr-2" />
-              Interested
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                setPostInterest("not_interested");
-                toast("👎 इस तरह के posts कम दिखाए जाएंगे");
-                setTimeout(() => onNotInterested?.(post.id), 500);
-              }}
-              className={
-                postInterest === "not_interested"
-                  ? "text-red-500 font-semibold"
-                  : ""
-              }
-            >
-              <ThumbsDown className="w-4 h-4 mr-2" />
-              Not Interested
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                if (!postReported) {
-                  setPostReported(true);
-                  toast("🚩 Report submit हो गया, हम इसे review करेंगे।");
-                  setTimeout(() => onReported?.(post.id), 500);
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="p-1 rounded-full hover:bg-muted active:scale-95 transition-transform duration-150"
+                style={{ color: "var(--app-text-muted)" }}
+                data-ocid={`feed.item.${post.id}.button`}
+              >
+                <MoreHorizontal className="w-5 h-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem
+                onClick={() => {
+                  setPostInterest("interested");
+                  toast.success("👍 इस post में interest mark किया");
+                }}
+                className={
+                  postInterest === "interested"
+                    ? "text-green-500 font-semibold"
+                    : ""
                 }
-              }}
-              className={
-                postReported ? "text-red-500 font-semibold" : "text-red-400"
-              }
-            >
-              {postReported ? (
-                <span className="flex items-center">
-                  <Check className="w-4 h-4 mr-2" />
-                  Reported
-                </span>
-              ) : (
-                <span className="flex items-center">
-                  <Flag className="w-4 h-4 mr-2" />
-                  Report
-                </span>
-              )}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              >
+                <ThumbsUp className="w-4 h-4 mr-2" />
+                Interested
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setPostInterest("not_interested");
+                  toast("👎 इस तरह के posts कम दिखाए जाएंगे");
+                  setTimeout(() => onNotInterested?.(post.id), 500);
+                }}
+                className={
+                  postInterest === "not_interested"
+                    ? "text-red-500 font-semibold"
+                    : ""
+                }
+              >
+                <ThumbsDown className="w-4 h-4 mr-2" />
+                Not Interested
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  if (!postReported) {
+                    setPostReported(true);
+                    toast("🚩 Report submit हो गया, हम इसे review करेंगे।");
+                    setTimeout(() => onReported?.(post.id), 500);
+                  }
+                }}
+                className={
+                  postReported ? "text-red-500 font-semibold" : "text-red-400"
+                }
+              >
+                {postReported ? (
+                  <span className="flex items-center">
+                    <Check className="w-4 h-4 mr-2" />
+                    Reported
+                  </span>
+                ) : (
+                  <span className="flex items-center">
+                    <Flag className="w-4 h-4 mr-2" />
+                    Report
+                  </span>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  const a = document.createElement("a");
+                  a.href = post.image;
+                  a.download = "post.jpg";
+                  a.click();
+                  toast.success("⬇️ Download शुरू हुआ!");
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => toast("🔀 Remix feature आ रहा है जल्द ही!")}
+              >
+                <Forward className="w-4 h-4 mr-2" />
+                Remix
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onToggleFavorite?.(post.id)}
+                className={
+                  favoritedPosts?.has(post.id) ? "text-yellow-500" : ""
+                }
+              >
+                <Bookmark className="w-4 h-4 mr-2" />
+                {favoritedPosts?.has(post.id)
+                  ? "Favorited ★"
+                  : "Add to Favorites"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  toast("🙈 Post hide हो गया");
+                  setTimeout(() => onNotInterested?.(post.id), 500);
+                }}
+              >
+                <VolumeX className="w-4 h-4 mr-2" />
+                Hide
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowAboutModal(true)}>
+                <UserIcon className="w-4 h-4 mr-2" />
+                About this account
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowQRModal(true)}>
+                <Hash className="w-4 h-4 mr-2" />
+                QR Code
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowWhyModal(true)}>
+                <Sparkles className="w-4 h-4 mr-2" />
+                Why you're seeing this
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => toast.success("Post added to your story! 📖")}
+              >
+                <BookOpen className="w-4 h-4 mr-2" />
+                Add to Story
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       {/* Media: image or video */}
       {post.type === "reel" && post.videoUrl ? (
@@ -1988,6 +2292,21 @@ function PostCard({
               </span>
             )}
           </div>
+        )}
+        {post.websiteLink && (
+          <a
+            href={post.websiteLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full border font-medium mt-0.5"
+            style={{
+              borderColor: "var(--app-accent)",
+              color: "var(--app-accent)",
+            }}
+            data-ocid={`feed.item.${post.id}.link`}
+          >
+            🔗 {post.websiteLink.replace(/^https?:\/\//, "").slice(0, 35)}
+          </a>
         )}
         <p className="text-sm mt-0.5" style={{ color: "var(--app-accent)" }}>
           {post.hashtags.join(" ")}
@@ -2141,7 +2460,7 @@ function PostCard({
                       disabled={!replyInputs[c.id]?.trim()}
                       className="text-[11px] px-2.5 py-1 rounded-full font-semibold text-white disabled:opacity-40"
                       style={{
-                        background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                        background: "linear-gradient(135deg, #7c3aed, #f97316)",
                       }}
                     >
                       Post
@@ -2171,7 +2490,7 @@ function PostCard({
                 disabled={!commentInput.trim()}
                 className="text-xs px-3 py-1.5 rounded-full font-semibold text-white"
                 style={{
-                  background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                  background: "linear-gradient(135deg, #7c3aed, #f97316)",
                 }}
                 data-ocid={`feed.item.${post.id}.submit_button`}
               >
@@ -2181,10 +2500,199 @@ function PostCard({
           </div>
         )}
       </div>
-      <ShareToFriendModal
+      <GlobalShareSheet
         open={showShareModal}
         onClose={() => setShowShareModal(false)}
+        title={`Check out this post by @${post.user.username}`}
+        url={`https://connectly.app/post/${post.id}`}
       />
+
+      {/* About this Account Modal */}
+      <Dialog open={showAboutModal} onOpenChange={setShowAboutModal}>
+        <DialogContent
+          className="max-w-sm rounded-2xl"
+          data-ocid="feed.about.dialog"
+        >
+          <DialogHeader>
+            <DialogTitle>About this account</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-3 py-2">
+            <Avatar className="w-16 h-16">
+              <AvatarImage src={post.user.avatar} alt={post.user.name} />
+              <AvatarFallback>{post.user.name[0]}</AvatarFallback>
+            </Avatar>
+            <div className="text-center">
+              <p
+                className="font-semibold text-base"
+                style={{ color: "var(--app-text)" }}
+              >
+                {post.user.name}
+              </p>
+              <p className="text-sm" style={{ color: "var(--app-text-muted)" }}>
+                @{post.user.username}
+              </p>
+            </div>
+            <div className="w-full flex flex-col gap-2 mt-1">
+              <div className="flex items-center justify-between text-sm">
+                <span style={{ color: "var(--app-text-muted)" }}>Joined</span>
+                <span style={{ color: "var(--app-text)" }}>January 2022</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span style={{ color: "var(--app-text-muted)" }}>
+                  Followers
+                </span>
+                <span
+                  className="font-semibold"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {post.user.followers?.toLocaleString() ?? "0"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span style={{ color: "var(--app-text-muted)" }}>Location</span>
+                <span style={{ color: "var(--app-text)" }}>India</span>
+              </div>
+              <p
+                className="text-xs mt-2"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                This account has been on Connectly since January 2022.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Modal */}
+      <Dialog open={showQRModal} onOpenChange={setShowQRModal}>
+        <DialogContent
+          className="max-w-sm rounded-2xl"
+          data-ocid="feed.qr.dialog"
+        >
+          <DialogHeader>
+            <DialogTitle>QR Code</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-2">
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(15, 1fr)",
+                width: 150,
+                height: 150,
+                gap: 2,
+                background: "white",
+                padding: 8,
+                borderRadius: 8,
+              }}
+            >
+              {(() => {
+                const qrCells: ReactElement[] = [];
+                for (let qIdx = 0; qIdx < 225; qIdx++) {
+                  const r = Math.floor(qIdx / 15);
+                  const c = qIdx % 15;
+                  const isCorner =
+                    (r < 3 && c < 3) || (r < 3 && c > 11) || (r > 11 && c < 3);
+                  const isInner =
+                    (r === 1 && c === 1) ||
+                    (r === 1 && c === 13) ||
+                    (r === 13 && c === 1);
+                  const filled =
+                    isCorner ||
+                    (!isInner && (r * 3 + c * 7 + post.user.id) % 3 !== 0);
+                  qrCells.push(
+                    <div
+                      key={`qr-cell-${r}-${c}`}
+                      style={{
+                        background: filled ? "#000" : "transparent",
+                        borderRadius: isCorner ? 2 : 0,
+                      }}
+                    />,
+                  );
+                }
+                return qrCells;
+              })()}
+            </div>
+            <div className="text-center">
+              <p className="font-semibold" style={{ color: "var(--app-text)" }}>
+                @{post.user.username}
+              </p>
+              <p
+                className="text-xs mt-1"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                Scan to visit @{post.user.username}'s profile
+              </p>
+            </div>
+            <Button
+              className="w-full rounded-xl"
+              onClick={() => toast.success("📋 QR Code copied!")}
+              data-ocid="feed.qr.primary_button"
+            >
+              Share QR Code
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Why You're Seeing This Modal */}
+      <Dialog open={showWhyModal} onOpenChange={setShowWhyModal}>
+        <DialogContent
+          className="max-w-sm rounded-2xl"
+          data-ocid="feed.why.dialog"
+        >
+          <DialogHeader>
+            <DialogTitle>Why you're seeing this post</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-2">
+            <div className="flex items-start gap-2 text-sm">
+              <span>👥</span>
+              <p style={{ color: "var(--app-text)" }}>
+                You follow @{post.user.username}
+              </p>
+            </div>
+            <div className="flex items-start gap-2 text-sm">
+              <span>🌍</span>
+              <p style={{ color: "var(--app-text)" }}>
+                This post is popular in your area
+              </p>
+            </div>
+            <div className="flex items-start gap-2 text-sm">
+              <span>✨</span>
+              <p style={{ color: "var(--app-text)" }}>
+                Based on your interests and activity
+              </p>
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl text-sm"
+                onClick={() => {
+                  setShowWhyModal(false);
+                  toast("👎 इस तरह के posts कम दिखाए जाएंगे");
+                  setTimeout(() => onNotInterested?.(post.id), 500);
+                }}
+                data-ocid="feed.why.secondary_button"
+              >
+                Not Interested
+              </Button>
+              <Button
+                className="flex-1 rounded-xl text-sm text-white"
+                style={{
+                  background: "linear-gradient(135deg, #7c3aed, #f97316)",
+                  border: "none",
+                }}
+                onClick={() => {
+                  setShowWhyModal(false);
+                  toast("⚙️ Preferences updated!");
+                }}
+                data-ocid="feed.why.primary_button"
+              >
+                Manage Preferences
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }
@@ -2200,6 +2708,7 @@ function HomePage({
   onAddStory,
   followedUsers,
   onOpenUserProfile,
+  onToggleFollow,
 }: {
   posts: Post[];
   onLike: (id: number) => void;
@@ -2213,6 +2722,7 @@ function HomePage({
   }) => void;
   followedUsers: Set<number>;
   onOpenUserProfile?: (user: AppUser) => void;
+  onToggleFollow?: (id: number) => void;
 }) {
   const [createStoryOpen, setCreateStoryOpen] = useState(false);
   const [viewingStory, setViewingStory] = useState<Story | null>(null);
@@ -2220,6 +2730,7 @@ function HomePage({
     Map<number, "not_interested" | "reported">
   >(new Map());
   const [hiddenSectionOpen, setHiddenSectionOpen] = useState(false);
+  const [favoritedPosts, setFavoritedPosts] = useState<Set<number>>(new Set());
   const hiddenPostIds = new Set(hiddenPosts.keys());
   const visiblePosts = posts.filter((p) => !hiddenPostIds.has(p.id));
 
@@ -2297,6 +2808,22 @@ function HomePage({
               onReported={(id) =>
                 setHiddenPosts((prev) => new Map([...prev, [id, "reported"]]))
               }
+              followedUsers={followedUsers}
+              onToggleFollow={onToggleFollow}
+              favoritedPosts={favoritedPosts}
+              onToggleFavorite={(id) => {
+                setFavoritedPosts((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(id)) {
+                    next.delete(id);
+                    toast("⭐ Favorites से हटाया");
+                  } else {
+                    next.add(id);
+                    toast.success("⭐ Favorites में add किया!");
+                  }
+                  return next;
+                });
+              }}
             />,
           ];
           if ((i + 1) % 3 === 0) {
@@ -2451,8 +2978,11 @@ function SearchPage({
     caption: string;
     commentCount: number;
     isLiked: boolean;
+    isSaved?: boolean;
+    isFollowing?: boolean;
   } | null>(null);
   const [lightboxComment, setLightboxComment] = useState("");
+  const [showLightboxShare, setShowLightboxShare] = useState(false);
 
   function saveSearch(q: string) {
     if (!q.trim()) return;
@@ -3029,14 +3559,23 @@ function SearchPage({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="px-3 py-1 rounded-full text-xs font-semibold"
+                  onClick={() =>
+                    setLightboxImg((prev) =>
+                      prev ? { ...prev, isFollowing: !prev.isFollowing } : null,
+                    )
+                  }
+                  className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
                   style={{
-                    backgroundColor: "var(--app-accent)",
-                    color: "#fff",
+                    backgroundColor: lightboxImg?.isFollowing
+                      ? "var(--app-border)"
+                      : "var(--app-accent)",
+                    color: lightboxImg?.isFollowing
+                      ? "var(--app-text-muted)"
+                      : "#fff",
                   }}
                   data-ocid="search.button"
                 >
-                  Follow
+                  {lightboxImg?.isFollowing ? "Following" : "Follow"}
                 </button>
                 <button
                   type="button"
@@ -3109,9 +3648,47 @@ function SearchPage({
               </button>
               <button
                 type="button"
+                onClick={() =>
+                  setLightboxImg((prev) =>
+                    prev ? { ...prev, isSaved: !prev.isSaved } : null,
+                  )
+                }
+                className="flex items-center gap-1.5 transition-transform active:scale-90"
+                data-ocid="search.toggle"
+              >
+                <Bookmark
+                  className="w-6 h-6"
+                  style={{
+                    color: lightboxImg?.isSaved
+                      ? "var(--app-accent)"
+                      : "var(--app-text)",
+                    fill: lightboxImg?.isSaved ? "var(--app-accent)" : "none",
+                  }}
+                />
+              </button>
+              <button
+                type="button"
                 onClick={() => {
-                  toast.success("Link copied!");
+                  const a = document.createElement("a");
+                  a.href = lightboxImg?.image || "";
+                  a.download = "connectly-post.jpg";
+                  a.target = "_blank";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  toast.success("Downloaded! ⬇️");
                 }}
+                className="flex items-center gap-1.5 transition-transform active:scale-90"
+                data-ocid="search.button"
+              >
+                <Download
+                  className="w-6 h-6"
+                  style={{ color: "var(--app-text)" }}
+                />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLightboxShare(true)}
                 className="flex items-center gap-1.5"
                 data-ocid="search.button"
               >
@@ -3179,6 +3756,16 @@ function SearchPage({
           </div>
         </button>
       )}
+      <GlobalShareSheet
+        open={showLightboxShare}
+        onClose={() => setShowLightboxShare(false)}
+        title={
+          lightboxImg
+            ? `Check out @${lightboxImg.username}'s post`
+            : "Check this out!"
+        }
+        url={window.location.href}
+      />
     </div>
   );
 }
@@ -3189,10 +3776,12 @@ function ReelsPage({
   userReels,
   followedUsers,
   setFollowedUsers,
+  onOpenUserProfile,
 }: {
   userReels?: Post[];
   followedUsers: Set<number>;
   setFollowedUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+  onOpenUserProfile?: (user: AppUser) => void;
 }) {
   const [reels, setReels] = useState<Reel[]>(() => {
     const extra: Reel[] = (userReels ?? []).map((p) => ({
@@ -3299,6 +3888,10 @@ function ReelsPage({
   const [audioEcho, setAudioEcho] = useState(false);
   const [audioReverb, setAudioReverb] = useState(false);
   const [audioSpeed, setAudioSpeed] = useState("1x");
+  const [savedAudios, setSavedAudios] = useState<Set<number>>(new Set());
+  const [showAudioShareSheet, setShowAudioShareSheet] = useState(false);
+  const [showAudioQRModal, setShowAudioQRModal] = useState(false);
+  const [reelProfileUser, setReelProfileUser] = useState<AppUser | null>(null);
   const [contentPrefs, setContentPrefs] = useState({
     Fitness: true,
     Food: true,
@@ -3631,7 +4224,7 @@ function ReelsPage({
                         {["P", "A", "M"].map((l) => (
                           <div
                             key={l}
-                            className="w-5 h-5 rounded-full bg-gradient-to-br from-pink-400 to-violet-500 border border-white flex items-center justify-center text-white text-[8px] font-bold"
+                            className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-orange-400 border border-white flex items-center justify-center text-white text-[8px] font-bold"
                           >
                             {l}
                           </div>
@@ -3643,16 +4236,42 @@ function ReelsPage({
                     </div>
                   )}
                   <div className="flex items-center gap-2 mb-2">
-                    <Avatar className="w-9 h-9 border-2 border-white">
-                      <AvatarImage
-                        src={reel.user.avatar}
-                        alt={reel.user.name}
-                      />
-                      <AvatarFallback>{reel.user.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="text-white text-sm font-semibold">
-                      {reel.user.username}
-                    </span>
+                    <button
+                      type="button"
+                      className="pointer-events-auto"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onOpenUserProfile) {
+                          onOpenUserProfile(reel.user);
+                        } else {
+                          setReelProfileUser(reel.user);
+                        }
+                      }}
+                    >
+                      <Avatar className="w-9 h-9 border-2 border-white">
+                        <AvatarImage
+                          src={reel.user.avatar}
+                          alt={reel.user.name}
+                        />
+                        <AvatarFallback>{reel.user.name[0]}</AvatarFallback>
+                      </Avatar>
+                    </button>
+                    <button
+                      type="button"
+                      className="pointer-events-auto"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onOpenUserProfile) {
+                          onOpenUserProfile(reel.user);
+                        } else {
+                          setReelProfileUser(reel.user);
+                        }
+                      }}
+                    >
+                      <span className="text-white text-sm font-semibold">
+                        {reel.user.username}
+                      </span>
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -4041,7 +4660,7 @@ function ReelsPage({
                         setFriendsSent((prev) => new Set([...prev, u.id]));
                         toast.success(`Sent to ${u.name}! 🚀`);
                       }}
-                      className={`text-xs px-4 py-1.5 rounded-full font-medium ${friendsSent.has(u.id) ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-400" : "bg-gradient-to-r from-pink-500 to-violet-500 text-white"}`}
+                      className={`text-xs px-4 py-1.5 rounded-full font-medium ${friendsSent.has(u.id) ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-400" : "btn-gradient text-white"}`}
                       data-ocid="reels.button"
                     >
                       {friendsSent.has(u.id) ? "Sent ✓" : "Send"}
@@ -4100,7 +4719,7 @@ function ReelsPage({
                   }
                   setShowRemixConfirm(null);
                 }}
-                className="flex-1 py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+                className="flex-1 py-2 rounded-full btn-gradient text-white text-sm font-medium"
                 data-ocid="reels.confirm_button"
               >
                 Remix
@@ -4199,6 +4818,74 @@ function ReelsPage({
         </>
       )}
 
+      {/* Audio Share Sheet */}
+      <GlobalShareSheet
+        open={showAudioShareSheet}
+        onClose={() => setShowAudioShareSheet(false)}
+        title="Check out this audio on Connectly!"
+        url={`https://connectly.app/audio/reel-${showAudioSheet}`}
+      />
+
+      {/* Audio QR Modal */}
+      {showAudioQRModal && (
+        <>
+          <div
+            role="button"
+            tabIndex={0}
+            className="fixed inset-0 bg-black/60 z-[60]"
+            onClick={() => setShowAudioQRModal(false)}
+            onKeyDown={(e) => e.key === "Escape" && setShowAudioQRModal(false)}
+          />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[60] bg-white dark:bg-zinc-900 rounded-2xl p-6 w-72 flex flex-col items-center gap-4"
+            data-ocid="reels.dialog"
+          >
+            <h3 className="font-bold dark:text-white">Audio QR Code</h3>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(15,1fr)",
+                width: 150,
+                height: 150,
+                gap: 2,
+                background: "white",
+                padding: 8,
+                borderRadius: 8,
+              }}
+            >
+              {Array.from({ length: 225 }, (_, qIdx) => {
+                const r = Math.floor(qIdx / 15);
+                const c = qIdx % 15;
+                const isCorner =
+                  (r < 3 && c < 3) || (r < 3 && c > 11) || (r > 11 && c < 3);
+                const filled =
+                  isCorner || (r * 3 + c * 7 + (showAudioSheet || 1)) % 3 !== 0;
+                return (
+                  <div
+                    key={`aqr-r${r}-c${c}`}
+                    style={{
+                      background: filled ? "#000" : "transparent",
+                      borderRadius: isCorner ? 2 : 0,
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <p className="text-xs text-center text-zinc-500">
+              Scan to open this audio
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowAudioQRModal(false)}
+              className="w-full py-2 rounded-full btn-gradient text-white text-sm font-medium"
+              data-ocid="reels.confirm_button"
+            >
+              Done
+            </button>
+          </div>
+        </>
+      )}
+
       {/* AI Info Dialog */}
       {showAIDialog && (
         <>
@@ -4248,7 +4935,7 @@ function ReelsPage({
             <button
               type="button"
               onClick={() => setShowAIDialog(false)}
-              className="mt-4 w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+              className="mt-4 w-full py-2 rounded-full btn-gradient text-white text-sm font-medium"
               data-ocid="reels.confirm_button"
             >
               Got it
@@ -4289,13 +4976,34 @@ function ReelsPage({
             <button
               type="button"
               onClick={() => setShowWhyDialog(false)}
-              className="mt-4 w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+              className="mt-4 w-full py-2 rounded-full btn-gradient text-white text-sm font-medium"
               data-ocid="reels.confirm_button"
             >
               Got it
             </button>
           </div>
         </>
+      )}
+
+      {/* Reel Profile Modal */}
+      {reelProfileUser && (
+        <UserProfileModal
+          user={reelProfileUser}
+          posts={[]}
+          stories={[]}
+          followedUsers={followedUsers}
+          allUsers={USERS}
+          onToggleFollow={(id) =>
+            setFollowedUsers((prev) => {
+              const n = new Set(prev);
+              if (n.has(id)) n.delete(id);
+              else n.add(id);
+              return n;
+            })
+          }
+          onClose={() => setReelProfileUser(null)}
+          onOpenStory={() => {}}
+        />
       )}
 
       {/* Manage Preferences Dialog */}
@@ -4332,7 +5040,7 @@ function ReelsPage({
                         [key]: !prev[key],
                       }))
                     }
-                    className={`w-12 h-6 rounded-full transition-colors relative ${val ? "bg-gradient-to-r from-pink-500 to-violet-500" : "bg-zinc-300 dark:bg-zinc-600"}`}
+                    className={`w-12 h-6 rounded-full transition-colors relative ${val ? "btn-gradient" : "bg-zinc-300 dark:bg-zinc-600"}`}
                     data-ocid="reels.toggle"
                   >
                     <span
@@ -4348,7 +5056,7 @@ function ReelsPage({
                 setShowPrefsDialog(false);
                 toast.success("Preferences saved! ✨");
               }}
-              className="mt-4 w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium"
+              className="mt-4 w-full py-2 rounded-full btn-gradient text-white text-sm font-medium"
               data-ocid="reels.save_button"
             >
               Save
@@ -4368,33 +5076,139 @@ function ReelsPage({
             onKeyDown={(e) => e.key === "Escape" && setShowAudioSheet(null)}
           />
           <div
-            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 rounded-t-2xl p-4 max-h-[75vh] overflow-y-auto"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-zinc-900 rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto"
             data-ocid="reels.sheet"
           >
             <div className="w-12 h-1 bg-zinc-300 dark:bg-zinc-700 rounded-full mx-auto mb-4" />
             {(() => {
               const audioReel = reels.find((r) => r.id === showAudioSheet);
+              const audioId = `#AUD-${(((showAudioSheet || 1) * 7 + 1337) % 9000) + 1000}`;
+              const reelCount =
+                (((showAudioSheet || 1) * 317 + 200) % 4800) + 200;
+              const audioDuration = `${Math.floor((((showAudioSheet || 1) * 13) % 2) + 0)}:${String((((showAudioSheet || 1) * 17 + 15) % 45) + 10)}`;
               return audioReel ? (
                 <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
                       <img
                         src={audioReel.image}
                         alt="audio"
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <div>
-                      <p className="font-semibold dark:text-white text-sm">
-                        Original Audio
-                      </p>
-                      <p className="text-xs text-zinc-500">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <p className="font-bold dark:text-white text-base">
+                          Original Audio
+                        </p>
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full font-bold text-white"
+                          style={{
+                            background:
+                              "linear-gradient(90deg, #ff4500, #ff6b00)",
+                          }}
+                        >
+                          🔥 Trending
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
                         {audioReel.user.name}
                       </p>
-                      <p className="text-xs text-violet-500 font-medium mt-0.5">
-                        2.4K Reels made with this audio
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        <span className="text-xs text-zinc-400">
+                          🎵 Original Audio
+                        </span>
+                        <span className="text-xs text-zinc-400">
+                          ID: {audioId}
+                        </span>
+                        <span className="text-xs text-zinc-400">
+                          ⏱ {audioDuration}
+                        </span>
+                      </div>
+                      <p className="text-xs text-violet-500 font-semibold mt-1">
+                        {reelCount.toLocaleString()} Reels made with this audio
                       </p>
                     </div>
+                  </div>
+                  {/* Action Buttons Row */}
+                  <div className="flex items-center justify-around mb-4 border-y border-zinc-100 dark:border-zinc-800 py-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSavedAudios((prev) => {
+                          const n = new Set(prev);
+                          if (n.has(showAudioSheet!)) {
+                            n.delete(showAudioSheet!);
+                            toast.success("Audio removed from saved");
+                          } else {
+                            n.add(showAudioSheet!);
+                            toast.success("Audio saved! 🎵");
+                          }
+                          return n;
+                        });
+                      }}
+                      className="flex flex-col items-center gap-1"
+                      data-ocid="reels.toggle"
+                    >
+                      <Heart
+                        className="w-6 h-6"
+                        style={{
+                          fill: savedAudios.has(showAudioSheet!)
+                            ? "#ef4444"
+                            : "none",
+                          color: savedAudios.has(showAudioSheet!)
+                            ? "#ef4444"
+                            : "inherit",
+                        }}
+                      />
+                      <span className="text-xs dark:text-white">
+                        {savedAudios.has(showAudioSheet!) ? "Saved" : "Save"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAudioShareSheet(true)}
+                      className="flex flex-col items-center gap-1"
+                      data-ocid="reels.button"
+                    >
+                      <Share2 className="w-6 h-6 dark:text-white" />
+                      <span className="text-xs dark:text-white">Share</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toast.success("Audio reported. Thank you! 🚩");
+                        setShowAudioSheet(null);
+                      }}
+                      className="flex flex-col items-center gap-1"
+                      data-ocid="reels.button"
+                    >
+                      <Flag className="w-6 h-6 dark:text-white" />
+                      <span className="text-xs dark:text-white">Report</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard
+                          ?.writeText(`https://connectly.app/audio/${audioId}`)
+                          .catch(() => {});
+                        toast.success("Audio link copied! 🔗");
+                      }}
+                      className="flex flex-col items-center gap-1"
+                      data-ocid="reels.button"
+                    >
+                      <Copy className="w-6 h-6 dark:text-white" />
+                      <span className="text-xs dark:text-white">Copy Link</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAudioQRModal(true)}
+                      className="flex flex-col items-center gap-1"
+                      data-ocid="reels.button"
+                    >
+                      <Hash className="w-6 h-6 dark:text-white" />
+                      <span className="text-xs dark:text-white">QR Code</span>
+                    </button>
                   </div>
                   <button
                     type="button"
@@ -4402,7 +5216,7 @@ function ReelsPage({
                       toast.success("Audio selected! 🎵");
                       setShowAudioSheet(null);
                     }}
-                    className="w-full py-2 rounded-full bg-gradient-to-r from-pink-500 to-violet-500 text-white text-sm font-medium mb-4"
+                    className="w-full py-2 rounded-full btn-gradient text-white text-sm font-medium mb-4"
                     data-ocid="reels.button"
                   >
                     🎵 Use Audio
@@ -4447,7 +5261,7 @@ function ReelsPage({
                         key={s}
                         type="button"
                         onClick={() => setAudioSpeed(s)}
-                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${audioSpeed === s ? "bg-pink-500 text-white border-pink-500" : "border-zinc-300 dark:border-zinc-700 dark:text-white"}`}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${audioSpeed === s ? "bg-purple-600 text-white border-purple-600" : "border-zinc-300 dark:border-zinc-700 dark:text-white"}`}
                         data-ocid="reels.toggle"
                       >
                         {s}
@@ -4514,7 +5328,7 @@ function ReelsPage({
                 <div key={`comment-${c.id}`} className="space-y-2">
                   {/* Top-level comment */}
                   <div className="flex items-start gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-violet-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-orange-400 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">
                       {c.user[0].toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -5308,7 +6122,7 @@ function ChatPage({
           className="px-4 py-3 rounded-2xl max-w-[70%] flex items-center gap-3"
           style={{
             background: msg.sent
-              ? "linear-gradient(135deg,#ff6b9d,#c44dff)"
+              ? "linear-gradient(135deg, #7c3aed, #f97316)"
               : "var(--app-card)",
             color: msg.sent ? "white" : "var(--app-text)",
           }}
@@ -5424,7 +6238,7 @@ function ChatPage({
     if (msg.type === "note") {
       const nd = msg.noteData;
       const bgMap: Record<string, string> = {
-        song: "linear-gradient(135deg,#a855f7,#7c3aed)",
+        song: "linear-gradient(135deg, #7c3aed, #f97316)",
         note: "linear-gradient(135deg,#f59e0b,#d97706)",
         location: "linear-gradient(135deg,#22c55e,#15803d)",
       };
@@ -5457,7 +6271,7 @@ function ChatPage({
         className="px-4 py-2 rounded-2xl text-sm max-w-[70%]"
         style={{
           background: msg.sent
-            ? "linear-gradient(135deg,#ff6b9d,#c44dff)"
+            ? "linear-gradient(135deg, #7c3aed, #f97316)"
             : "var(--app-card)",
           color: msg.sent ? "white" : "var(--app-text)",
           borderBottomRightRadius: msg.sent ? 4 : undefined,
@@ -6199,7 +7013,7 @@ function ChatPage({
                   size="sm"
                   className="rounded-full px-4 text-white flex-shrink-0"
                   style={{
-                    background: "linear-gradient(135deg,#ff6b9d,#c44dff)",
+                    background: "linear-gradient(135deg, #7c3aed, #f97316)",
                     border: "none",
                   }}
                   data-ocid="chat.submit_button"
@@ -6346,7 +7160,7 @@ function ChatPage({
                     style={{
                       background:
                         noteTab === t
-                          ? "linear-gradient(135deg,#ff6b9d,#c44dff)"
+                          ? "linear-gradient(135deg, #7c3aed, #f97316)"
                           : "var(--app-bg)",
                       color: noteTab === t ? "white" : "var(--app-text-muted)",
                     }}
@@ -6387,7 +7201,8 @@ function ChatPage({
                       <Music
                         className="w-8 h-8 p-1.5 rounded-full text-white flex-shrink-0"
                         style={{
-                          background: "linear-gradient(135deg,#a855f7,#7c3aed)",
+                          background:
+                            "linear-gradient(135deg, #7c3aed, #f97316)",
                         }}
                       />
                       <div>
@@ -6755,8 +7570,41 @@ function ProfilePage({
     id: number;
     image: string;
   } | null>(null);
+  const [savedReelShareOpen, setSavedReelShareOpen] = useState(false);
   const [showOwnProfileShareModal, setShowOwnProfileShareModal] =
     useState(false);
+  const [showReferralModal, setShowReferralModal] = useState(false);
+  const [referralCopied, setReferralCopied] = useState(false);
+  // Account Centre state
+  const [acSection, setAcSection] = useState<string | null>(null);
+  const [changePassOpen, setChangePassOpen] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [twoFAEnabled, setTwoFAEnabled] = useState(false);
+  const [syncProfilePic, setSyncProfilePic] = useState(true);
+  const [sharingAcrossProfile, setSharingAcrossProfile] = useState(false);
+  const [memoriesEnabled, setMemoriesEnabled] = useState(true);
+  const [showProfileLink, setShowProfileLink] = useState(true);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [showSecurityCheckup, setShowSecurityCheckup] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [showUpgradePro, setShowUpgradePro] = useState(false);
+  const [staticPage, setStaticPage] = useState<
+    "about" | "privacy" | "terms" | "contact" | null
+  >(null);
+  const referralCode = `CONNECT-${profile.username.toUpperCase()}-2024`;
+  const referralData = (() => {
+    try {
+      const stored = localStorage.getItem(
+        `connectly_referral_${profile.username}`,
+      );
+      return stored ? JSON.parse(stored) : { invited: 3, points: 150 };
+    } catch {
+      return { invited: 3, points: 150 };
+    }
+  })();
   const [selectedProfilePost, setSelectedProfilePost] = useState<{
     id: number;
     image: string;
@@ -6789,6 +7637,7 @@ function ProfilePage({
     Record<number, boolean>
   >({});
   const [taggedLiked, setTaggedLiked] = useState<Set<number>>(new Set());
+  const [taggedAuthorFollowed, setTaggedAuthorFollowed] = useState(false);
   const [taggedCommentInput, setTaggedCommentInput] = useState("");
   const [taggedComments, setTaggedComments] = useState<
     Record<
@@ -6834,26 +7683,64 @@ function ProfilePage({
       <div className="flex flex-col gap-6 pb-4" data-ocid="profile.page">
         {/* Header */}
         <div
-          className="rounded-xl border border-border p-6"
+          className="rounded-xl border border-border overflow-hidden"
           style={{ backgroundColor: "var(--app-card)" }}
         >
-          <div className="flex items-start gap-5">
-            <div className="relative">
+          {/* Cover Photo */}
+          <button
+            type="button"
+            className="relative w-full group cursor-pointer"
+            style={{ height: 120 }}
+            onClick={onEditProfile}
+            data-ocid="profile.cover.edit_button"
+          >
+            {profile.coverPhoto ? (
+              <img
+                src={profile.coverPhoto}
+                alt="cover"
+                className="w-full h-full object-cover"
+              />
+            ) : (
               <div
+                className="w-full h-full"
                 style={{
-                  background:
-                    "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
-                  padding: 3,
-                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #7c3aed, #f97316)",
                 }}
+              />
+            )}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all">
+              <span className="text-white text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                <Camera className="w-4 h-4" /> Change Cover
+              </span>
+            </div>
+          </button>
+          <div className="flex items-start gap-5 p-6 pt-3">
+            <div className="relative -mt-10">
+              <button
+                type="button"
+                className="relative group block focus:outline-none"
+                onClick={onEditProfile}
+                data-ocid="profile.avatar.edit_button"
               >
-                <div className="bg-background rounded-full p-1">
-                  <Avatar className="w-20 h-20">
-                    <AvatarImage src={profile.avatar} alt={profile.name} />
-                    <AvatarFallback>Y</AvatarFallback>
-                  </Avatar>
+                <div
+                  style={{
+                    background:
+                      "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)",
+                    padding: 3,
+                    borderRadius: "50%",
+                  }}
+                >
+                  <div className="bg-background rounded-full p-1">
+                    <Avatar className="w-20 h-20">
+                      <AvatarImage src={profile.avatar} alt={profile.name} />
+                      <AvatarFallback>Y</AvatarFallback>
+                    </Avatar>
+                  </div>
                 </div>
-              </div>
+                <div className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
+                  <Camera className="w-5 h-5 text-white" />
+                </div>
+              </button>
             </div>
             <div className="flex-1">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -6931,6 +7818,18 @@ function ProfilePage({
               >
                 {profile.bio}
               </p>
+              {profile.website && (
+                <a
+                  href={profile.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs flex items-center gap-1 mt-1 hover:underline"
+                  style={{ color: "#60a5fa" }}
+                  data-ocid="profile.website.link"
+                >
+                  🔗 {profile.website}
+                </a>
+              )}
               {principal && (
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <div
@@ -6939,7 +7838,7 @@ function ProfilePage({
                   >
                     <Shield
                       className="w-3 h-3 flex-shrink-0"
-                      style={{ color: "#c44dff" }}
+                      style={{ color: "#7c3aed" }}
                     />
                     <span
                       className="text-xs font-mono"
@@ -6955,11 +7854,11 @@ function ProfilePage({
                         loginMethod === "internet-identity"
                           ? {
                               background: "rgba(196,77,255,0.15)",
-                              color: "#c44dff",
+                              color: "#7c3aed",
                             }
                           : {
                               background: "rgba(255,107,157,0.15)",
-                              color: "#ff6b9d",
+                              color: "#f97316",
                             }
                       }
                     >
@@ -7024,6 +7923,164 @@ function ProfilePage({
                   </p>
                 </button>
               </div>
+              {/* Invite Friends Button */}
+              <button
+                type="button"
+                onClick={() => setShowReferralModal(true)}
+                className="mt-3 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all hover:scale-105 active:scale-95 text-white"
+                style={{
+                  background: "linear-gradient(135deg, #7c3aed, #f97316)",
+                }}
+                data-ocid="profile.invite.button"
+              >
+                🎁 Invite Friends
+                <span className="text-xs opacity-80">
+                  ⭐ {referralData.points} pts
+                </span>
+              </button>
+
+              {/* Referral Modal */}
+              <Dialog
+                open={showReferralModal}
+                onOpenChange={setShowReferralModal}
+              >
+                <DialogContent
+                  className="max-w-sm"
+                  data-ocid="profile.referral.modal"
+                >
+                  <DialogHeader>
+                    <DialogTitle>🎁 Invite Friends</DialogTitle>
+                    <DialogDescription>
+                      Share your referral code and earn rewards!
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div
+                      className="rounded-xl p-4 text-center"
+                      style={{
+                        backgroundColor: "var(--app-bg)",
+                        border: "1px solid var(--app-border)",
+                      }}
+                    >
+                      <p
+                        className="text-xs mb-1"
+                        style={{ color: "var(--app-text-muted)" }}
+                      >
+                        Your Referral Code
+                      </p>
+                      <p
+                        className="text-lg font-extrabold tracking-widest"
+                        style={{ color: "var(--app-accent)" }}
+                      >
+                        {referralCode}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div
+                        className="rounded-xl p-3 text-center"
+                        style={{
+                          backgroundColor: "var(--app-card)",
+                          border: "1px solid var(--app-border)",
+                        }}
+                      >
+                        <p
+                          className="text-xl font-bold"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          {referralData.invited}
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Friends Invited
+                        </p>
+                      </div>
+                      <div
+                        className="rounded-xl p-3 text-center"
+                        style={{
+                          backgroundColor: "var(--app-card)",
+                          border: "1px solid var(--app-border)",
+                        }}
+                      >
+                        <p
+                          className="text-xl font-bold"
+                          style={{ color: "var(--app-accent)" }}
+                        >
+                          ⭐ {referralData.points}
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Points Earned
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      className="text-xs px-3 py-2 rounded-lg"
+                      style={{
+                        backgroundColor: "rgba(34,211,238,0.1)",
+                        color: "var(--app-text-muted)",
+                      }}
+                    >
+                      Referred by{" "}
+                      <span
+                        className="font-semibold"
+                        style={{ color: "var(--app-accent)" }}
+                      >
+                        @creator_vibes
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        className="flex-1"
+                        variant="outline"
+                        onClick={() => {
+                          navigator.clipboard
+                            .writeText(referralCode)
+                            .catch(() => {});
+                          setReferralCopied(true);
+                          setTimeout(() => setReferralCopied(false), 2000);
+                          toast.success("Referral code copied!");
+                        }}
+                        data-ocid="profile.referral.button"
+                      >
+                        {referralCopied ? "✓ Copied!" : "📋 Copy Code"}
+                      </Button>
+                      <Button
+                        className="flex-1 text-white"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #7c3aed, #f97316)",
+                        }}
+                        onClick={() => {
+                          if (navigator.share) {
+                            navigator
+                              .share({
+                                title: "Join Connectly",
+                                text: `Join me on Connectly! Use my code: ${referralCode}`,
+                                url: window.location.href,
+                              })
+                              .catch(() => {});
+                          } else {
+                            navigator.clipboard
+                              .writeText(
+                                `Join me on Connectly! Use code: ${referralCode}`,
+                              )
+                              .catch(() => {});
+                            toast.success("Share text copied!");
+                          }
+                        }}
+                        data-ocid="profile.referral.secondary_button"
+                      >
+                        📤 Share
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               {/* Followers Modal */}
               <Dialog
                 open={showFollowersModal}
@@ -7389,6 +8446,1142 @@ function ProfilePage({
             </DialogContent>
           </Dialog>
         </div>
+
+        {/* Static Pages */}
+        {staticPage === "about" && (
+          <AboutPage onBack={() => setStaticPage(null)} />
+        )}
+        {staticPage === "privacy" && (
+          <PrivacyPolicyPage onBack={() => setStaticPage(null)} />
+        )}
+        {staticPage === "terms" && (
+          <TermsPage onBack={() => setStaticPage(null)} />
+        )}
+        {staticPage === "contact" && (
+          <ContactPage onBack={() => setStaticPage(null)} />
+        )}
+
+        {/* Account Centre */}
+        {!staticPage && (
+          <div
+            className="rounded-2xl p-4 mb-4"
+            style={{
+              backgroundColor: "var(--app-card)",
+              border: "1px solid var(--app-border)",
+            }}
+          >
+            <h2
+              className="text-base font-bold mb-4"
+              style={{ color: "var(--app-text)" }}
+            >
+              ⚙️ Account Centre
+            </h2>
+
+            {/* Password & Security */}
+            {[
+              {
+                key: "passwordSecurity",
+                label: "🔐 Password & Security",
+                content: (
+                  <div className="space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Change Password
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Login & Recovery
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => setChangePassOpen(true)}
+                        data-ocid="profile.password.button"
+                      >
+                        Change
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Two-Factor Authentication
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          {twoFAEnabled ? "Enabled" : "Disabled"}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={twoFAEnabled}
+                        onCheckedChange={setTwoFAEnabled}
+                        data-ocid="profile.twofa.switch"
+                      />
+                    </div>
+                    {twoFAEnabled && (
+                      <div className="ml-4 space-y-2">
+                        <div
+                          className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+                          style={{
+                            backgroundColor: "var(--app-bg)",
+                            color: "var(--app-text-muted)",
+                          }}
+                        >
+                          <span>📱</span>
+                          <span>Authenticator App (Active)</span>
+                        </div>
+                        <div
+                          className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
+                          style={{
+                            backgroundColor: "var(--app-bg)",
+                            color: "var(--app-text-muted)",
+                          }}
+                        >
+                          <span>💬</span>
+                          <span>SMS Authentication (Setup)</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Verification Selfie
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          🕐 Verification Pending
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => toast.info("Feature coming soon")}
+                        data-ocid="profile.selfie.button"
+                      >
+                        Upload
+                      </Button>
+                    </div>
+                    <div>
+                      <p
+                        className="text-sm font-medium mb-2"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        Saved Logins
+                      </p>
+                      {[
+                        {
+                          device: "Chrome on Windows",
+                          location: "Mumbai, IN",
+                          time: "2 days ago",
+                        },
+                        {
+                          device: "Safari on iPhone 15",
+                          location: "Delhi, IN",
+                          time: "5 days ago",
+                        },
+                        {
+                          device: "Firefox on Mac",
+                          location: "Bangalore, IN",
+                          time: "1 week ago",
+                        },
+                      ].map((session) => (
+                        <div
+                          key={session.device}
+                          className="flex items-center justify-between py-2 border-b last:border-0"
+                          style={{ borderColor: "var(--app-border)" }}
+                        >
+                          <div>
+                            <p
+                              className="text-xs font-medium"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {session.device}
+                            </p>
+                            <p
+                              className="text-xs"
+                              style={{ color: "var(--app-text-muted)" }}
+                            >
+                              {session.location} · {session.time}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-6 px-2"
+                            onClick={() => toast.success("Device removed")}
+                            data-ocid="profile.device.delete_button"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "security",
+                label: "🛡️ Security",
+                content: (
+                  <div className="space-y-3 mt-2">
+                    <div>
+                      <p
+                        className="text-sm font-medium mb-2"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        Where You're Logged In
+                      </p>
+                      {[
+                        {
+                          device: "Chrome · Windows 11",
+                          loc: "Mumbai, India",
+                          time: "Active now",
+                        },
+                        {
+                          device: "Safari · iPhone 15 Pro",
+                          loc: "Delhi, India",
+                          time: "3 hours ago",
+                        },
+                        {
+                          device: "Firefox · macOS Sonoma",
+                          loc: "Pune, India",
+                          time: "Yesterday",
+                        },
+                      ].map((s) => (
+                        <div
+                          key={s.device}
+                          className="flex items-center justify-between py-2 border-b last:border-0"
+                          style={{ borderColor: "var(--app-border)" }}
+                        >
+                          <div>
+                            <p
+                              className="text-xs font-medium"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {s.device}
+                            </p>
+                            <p
+                              className="text-xs"
+                              style={{ color: "var(--app-text-muted)" }}
+                            >
+                              {s.loc} · {s.time}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-6 px-2"
+                            onClick={() => toast.success("Session ended")}
+                            data-ocid="profile.session.delete_button"
+                          >
+                            Log Out
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Recent Email & Mobile
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          📧 c***@gmail.com · 📱 +91 ****5678
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => toast.info("Update via Edit Profile")}
+                        data-ocid="profile.email.button"
+                      >
+                        Update
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Security Checkup
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Review your security status
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => setShowSecurityCheckup(true)}
+                        data-ocid="profile.security.button"
+                      >
+                        Review
+                      </Button>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "connectedExperience",
+                label: "🔗 Connected Experience",
+                content: (
+                  <div className="space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <p
+                        className="text-sm font-medium"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        Add Account
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() =>
+                          toast.info("Multi-account support coming soon")
+                        }
+                        data-ocid="profile.addaccount.button"
+                      >
+                        + Add
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Sharing Across Profiles
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Share content across connected accounts
+                        </p>
+                      </div>
+                      <Switch
+                        checked={sharingAcrossProfile}
+                        onCheckedChange={setSharingAcrossProfile}
+                        data-ocid="profile.sharing.switch"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Memories of Connectly
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          On This Day memories
+                        </p>
+                      </div>
+                      <Switch
+                        checked={memoriesEnabled}
+                        onCheckedChange={setMemoriesEnabled}
+                        data-ocid="profile.memories.switch"
+                      />
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "profileInfoAccess",
+                label: "👤 Profile Information & Access",
+                content: (
+                  <div className="space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Syncing Profile Picture
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Sync across connected accounts
+                        </p>
+                      </div>
+                      <Switch
+                        checked={syncProfilePic}
+                        onCheckedChange={setSyncProfilePic}
+                        data-ocid="profile.sync.switch"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Managing Avatar
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Customize your avatar
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => setShowAvatarPicker(true)}
+                        data-ocid="profile.avatar.button"
+                      >
+                        Customize
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Show Profile Link
+                        </p>
+                        {showProfileLink && (
+                          <p className="text-xs" style={{ color: "#60a5fa" }}>
+                            connectly.app/@{profile.username}
+                          </p>
+                        )}
+                      </div>
+                      <Switch
+                        checked={showProfileLink}
+                        onCheckedChange={setShowProfileLink}
+                        data-ocid="profile.profilelink.switch"
+                      />
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "infoPermissions",
+                label: "📋 Your Information & Permissions",
+                content: (
+                  <div className="space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Download Your Data
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Request a copy of your data
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() =>
+                          toast.success(
+                            "Request submitted! We'll email you within 48 hours.",
+                          )
+                        }
+                        data-ocid="profile.download.button"
+                      >
+                        Request
+                      </Button>
+                    </div>
+                    <div>
+                      <p
+                        className="text-sm font-medium"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        Data Portability
+                      </p>
+                      <p
+                        className="text-xs"
+                        style={{ color: "var(--app-text-muted)" }}
+                      >
+                        Your data is stored locally in your browser. You can
+                        export it at any time using the Download option above.
+                      </p>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "subscription",
+                label: "⭐ Subscription",
+                content: (
+                  <div className="space-y-3 mt-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-sm font-medium"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        Current Plan:
+                      </span>
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                        style={{
+                          backgroundColor: "rgba(34,211,238,0.15)",
+                          color: "#22d3ee",
+                        }}
+                      >
+                        Free
+                      </span>
+                    </div>
+                    <Button
+                      className="w-full font-bold text-white"
+                      style={{
+                        background: "linear-gradient(135deg, #7c3aed, #f97316)",
+                      }}
+                      onClick={() => setShowUpgradePro(true)}
+                      data-ocid="profile.upgrade.button"
+                    >
+                      ✨ Upgrade to Connectly Pro
+                    </Button>
+                  </div>
+                ),
+              },
+              {
+                key: "manageAccount",
+                label: "🗑️ Manage Account",
+                content: (
+                  <div className="space-y-3 mt-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Deactivate Account
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Temporarily disable your account
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs text-yellow-500 border-yellow-500"
+                        onClick={() => setShowDeactivateModal(true)}
+                        data-ocid="profile.deactivate.button"
+                      >
+                        Deactivate
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-destructive">
+                          Delete Account
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          Permanently delete your account
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs text-destructive border-destructive"
+                        onClick={() => setShowDeleteModal(true)}
+                        data-ocid="profile.delete_button"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "aboutLegal",
+                label: "ℹ️ About & Legal",
+                content: (
+                  <div className="space-y-2 mt-2">
+                    {[
+                      {
+                        label: "About Connectly",
+                        key: "about" as const,
+                        onClick: () => setStaticPage("about"),
+                      },
+                      {
+                        label: "🔒 Privacy Policy",
+                        key: "privacy" as const,
+                        onClick: () => setShowPrivacyModal(true),
+                      },
+                      {
+                        label: "📋 Terms & Conditions",
+                        key: "terms" as const,
+                        onClick: () => setShowTermsModal(true),
+                      },
+                      {
+                        label: "Contact & Support",
+                        key: "contact" as const,
+                        onClick: () => setStaticPage("contact"),
+                      },
+                    ].map((item) => (
+                      <button
+                        type="button"
+                        key={item.key}
+                        onClick={item.onClick}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm hover:bg-muted transition-colors"
+                        style={{ color: "var(--app-text)" }}
+                        data-ocid="profile.legal.button"
+                      >
+                        <span>{item.label}</span>
+                        <span style={{ color: "var(--app-text-muted)" }}>
+                          ›
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ),
+              },
+            ].map((section) => (
+              <div
+                key={section.key}
+                className="border-b last:border-0"
+                style={{ borderColor: "var(--app-border)" }}
+              >
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between py-3 text-sm font-semibold"
+                  style={{ color: "var(--app-text)" }}
+                  onClick={() =>
+                    setAcSection(acSection === section.key ? null : section.key)
+                  }
+                  data-ocid="profile.settings.toggle"
+                >
+                  <span>{section.label}</span>
+                  <span
+                    className="text-lg transition-transform duration-150"
+                    style={{
+                      transform:
+                        acSection === section.key
+                          ? "rotate(90deg)"
+                          : "rotate(0deg)",
+                    }}
+                  >
+                    ›
+                  </span>
+                </button>
+                {acSection === section.key && section.content}
+              </div>
+            ))}
+
+            {/* Modals for Account Centre */}
+            {/* Change Password Modal */}
+            <Dialog open={changePassOpen} onOpenChange={setChangePassOpen}>
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.password.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle>Change Password</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <input
+                    type="password"
+                    placeholder="Current password"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background outline-none"
+                    data-ocid="profile.password.input"
+                  />
+                  <input
+                    type="password"
+                    placeholder="New password"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background outline-none"
+                    data-ocid="profile.password.input"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirm new password"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background outline-none"
+                    data-ocid="profile.password.input"
+                  />
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      setChangePassOpen(false);
+                      toast.success("Password changed successfully!");
+                    }}
+                    data-ocid="profile.password.save_button"
+                  >
+                    Save Password
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Security Checkup Modal */}
+            <Dialog
+              open={showSecurityCheckup}
+              onOpenChange={setShowSecurityCheckup}
+            >
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.security.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle>🛡️ Security Checkup</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {[
+                    {
+                      label: "Password",
+                      status: true,
+                      note: "Strong password set",
+                    },
+                    {
+                      label: "Two-Factor Authentication",
+                      status: twoFAEnabled,
+                      note: twoFAEnabled ? "Enabled" : "Not enabled",
+                    },
+                    {
+                      label: "Recovery Email",
+                      status: true,
+                      note: "c***@gmail.com",
+                    },
+                    {
+                      label: "Verification Selfie",
+                      status: false,
+                      note: "Not completed",
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="flex items-center gap-3 py-2 border-b last:border-0"
+                      style={{ borderColor: "var(--app-border)" }}
+                    >
+                      <span className="text-lg">
+                        {item.status ? "✅" : "⭕"}
+                      </span>
+                      <div>
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          {item.label}
+                        </p>
+                        <p
+                          className="text-xs"
+                          style={{ color: "var(--app-text-muted)" }}
+                        >
+                          {item.note}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => setShowSecurityCheckup(false)}
+                    data-ocid="profile.security.close_button"
+                  >
+                    Done
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Avatar Picker Modal */}
+            <Dialog open={showAvatarPicker} onOpenChange={setShowAvatarPicker}>
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.avatar.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle>Choose Avatar</DialogTitle>
+                </DialogHeader>
+                <div className="grid grid-cols-4 gap-3 py-2">
+                  {[
+                    "😀",
+                    "😎",
+                    "🤓",
+                    "👩‍💻",
+                    "👨‍🎨",
+                    "🦸",
+                    "🧙",
+                    "🤖",
+                    "👑",
+                    "🐱",
+                    "🦊",
+                    "🌟",
+                  ].map((emoji) => (
+                    <button
+                      type="button"
+                      key={emoji}
+                      onClick={() => {
+                        setShowAvatarPicker(false);
+                        toast.success(`Avatar set to ${emoji}`);
+                      }}
+                      className="text-3xl h-14 rounded-xl border-2 border-border hover:border-primary hover:scale-110 transition-all"
+                      data-ocid="profile.avatar.button"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Upgrade Pro Modal */}
+            <Dialog open={showUpgradePro} onOpenChange={setShowUpgradePro}>
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.upgrade.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle>✨ Connectly Pro</DialogTitle>
+                  <DialogDescription>Unlock premium features</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
+                  {[
+                    "No ads experience",
+                    "✅ Verified badge",
+                    "📦 Extra storage (10GB)",
+                    "🎨 Exclusive themes",
+                    "⚡ Priority AI Studio",
+                  ].map((f) => (
+                    <div
+                      key={f}
+                      className="flex items-center gap-2 text-sm"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      <span>⭐</span>
+                      {f}
+                    </div>
+                  ))}
+                  <Button
+                    className="w-full font-bold text-white mt-2"
+                    style={{
+                      background: "linear-gradient(135deg, #7c3aed, #f97316)",
+                    }}
+                    onClick={() => {
+                      setShowUpgradePro(false);
+                      toast.info("Pro plan coming soon! Stay tuned.");
+                    }}
+                    data-ocid="profile.upgrade.confirm_button"
+                  >
+                    Coming Soon — Stay Tuned
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Deactivate Modal */}
+            <Dialog
+              open={showDeactivateModal}
+              onOpenChange={setShowDeactivateModal}
+            >
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.deactivate.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle>Deactivate Account</DialogTitle>
+                  <DialogDescription>
+                    Your account will be temporarily disabled. You can
+                    reactivate anytime.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex gap-3 mt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowDeactivateModal(false)}
+                    data-ocid="profile.deactivate.cancel_button"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white"
+                    onClick={() => {
+                      setShowDeactivateModal(false);
+                      toast.success("Account deactivated (mock).");
+                    }}
+                    data-ocid="profile.deactivate.confirm_button"
+                  >
+                    Deactivate
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Privacy Policy Modal */}
+            <Dialog open={showPrivacyModal} onOpenChange={setShowPrivacyModal}>
+              <DialogContent
+                className="max-w-lg max-h-[80vh] overflow-y-auto"
+                data-ocid="profile.privacy.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle>🔒 Privacy Policy</DialogTitle>
+                  <DialogDescription
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Last updated: January 2025
+                  </DialogDescription>
+                </DialogHeader>
+                <div
+                  className="space-y-4 text-sm mt-2"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {[
+                    {
+                      title: "1. Information We Collect",
+                      body: "We collect information you provide (name, email, profile photo, posts), usage data (interactions, watch time), and device info (OS, browser type).",
+                    },
+                    {
+                      title: "2. How We Use Your Information",
+                      body: "To personalize your feed and recommendations, improve app features, send notifications (with your permission), and ensure safety and moderation.",
+                    },
+                    {
+                      title: "3. Data Storage & Security",
+                      body: "Your data is stored securely on encrypted servers. We use HTTPS for all connections. We do not sell your personal data to third parties.",
+                    },
+                    {
+                      title: "4. User-Generated Content",
+                      body: "You own your content. By posting, you grant Connectly a license to display it within the app. You can delete your content and account at any time.",
+                    },
+                    {
+                      title: "5. AI Features",
+                      body: "AI-generated suggestions (captions, comments, hashtags) are for assistance only. AI content may be inaccurate — always review before publishing.",
+                    },
+                    {
+                      title: "6. Third-Party Services",
+                      body: "We may use analytics and cloud services. These providers have their own privacy policies.",
+                    },
+                    {
+                      title: "7. Children's Privacy",
+                      body: "Connectly is for users 13 and older. We do not knowingly collect data from children under 13.",
+                    },
+                    {
+                      title: "8. Your Rights",
+                      body: "You can access, correct, or delete your data anytime from Settings → Manage Account. You can also request data export.",
+                    },
+                    {
+                      title: "9. Contact Us",
+                      body: "For privacy questions: privacy@connectly.app",
+                    },
+                  ].map((section) => (
+                    <div key={section.title}>
+                      <p className="font-semibold mb-1">{section.title}</p>
+                      <p
+                        className="text-xs leading-relaxed"
+                        style={{ color: "var(--app-text-muted)" }}
+                      >
+                        {section.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div
+                  className="mt-4 pt-3 border-t"
+                  style={{ borderColor: "var(--app-border)" }}
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowPrivacyModal(false)}
+                    data-ocid="profile.privacy.close_button"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Terms & Conditions Modal */}
+            <Dialog open={showTermsModal} onOpenChange={setShowTermsModal}>
+              <DialogContent
+                className="max-w-lg max-h-[80vh] overflow-y-auto"
+                data-ocid="profile.terms.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle>📋 Terms &amp; Conditions</DialogTitle>
+                  <DialogDescription
+                    className="text-xs"
+                    style={{ color: "var(--app-text-muted)" }}
+                  >
+                    Last updated: January 2025
+                  </DialogDescription>
+                </DialogHeader>
+                <div
+                  className="space-y-4 text-sm mt-2"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {[
+                    {
+                      title: "1. Acceptance",
+                      body: "By using Connectly, you agree to these Terms. If you disagree, please do not use the app.",
+                    },
+                    {
+                      title: "2. Eligibility",
+                      body: "You must be at least 13 years old to use Connectly. By registering, you confirm you meet this requirement.",
+                    },
+                    {
+                      title: "3. User Conduct",
+                      body: "You agree NOT to post: hate speech, nudity, violence, harassment, spam, illegal content, or content that violates others' rights. Violations may result in account suspension or termination.",
+                    },
+                    {
+                      title: "4. Intellectual Property",
+                      body: "Connectly's branding, logo, and design are original and protected. You may not copy, reproduce, or distribute them.",
+                    },
+                    {
+                      title: "5. User Content",
+                      body: "You retain ownership of your posts. You grant Connectly a non-exclusive license to display your content within the platform. You are responsible for content you post.",
+                    },
+                    {
+                      title: "6. AI Features Disclaimer",
+                      body: "AI tools are provided as-is. AI-generated content may be inaccurate. Connectly is not liable for AI suggestions used publicly.",
+                    },
+                    {
+                      title: "7. Subscription",
+                      body: "Connectly+ is $5/month. Subscriptions auto-renew unless cancelled. Refunds are handled case-by-case — contact support@connectly.app.",
+                    },
+                    {
+                      title: "8. Limitation of Liability",
+                      body: "Connectly is not liable for indirect or incidental damages arising from app use.",
+                    },
+                    {
+                      title: "9. Changes to Terms",
+                      body: "We may update these terms. Continued use after changes constitutes acceptance.",
+                    },
+                    {
+                      title: "10. Contact",
+                      body: "For legal inquiries: legal@connectly.app",
+                    },
+                  ].map((section) => (
+                    <div key={section.title}>
+                      <p className="font-semibold mb-1">{section.title}</p>
+                      <p
+                        className="text-xs leading-relaxed"
+                        style={{ color: "var(--app-text-muted)" }}
+                      >
+                        {section.body}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div
+                  className="mt-4 pt-3 border-t"
+                  style={{ borderColor: "var(--app-border)" }}
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setShowTermsModal(false)}
+                    data-ocid="profile.terms.close_button"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Delete Modal */}
+            <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+              <DialogContent
+                className="max-w-sm"
+                data-ocid="profile.delete.modal"
+              >
+                <DialogHeader>
+                  <DialogTitle className="text-destructive">
+                    Delete Account
+                  </DialogTitle>
+                  <DialogDescription>
+                    This action is permanent and cannot be undone. All your data
+                    will be deleted.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <label
+                    className="flex items-center gap-2 text-sm cursor-pointer"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={deleteConfirmed}
+                      onChange={(e) => setDeleteConfirmed(e.target.checked)}
+                      data-ocid="profile.delete.checkbox"
+                    />
+                    I understand this will permanently delete my account
+                  </label>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        setShowDeleteModal(false);
+                        setDeleteConfirmed(false);
+                      }}
+                      data-ocid="profile.delete.cancel_button"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      variant="destructive"
+                      disabled={!deleteConfirmed}
+                      onClick={() => {
+                        setShowDeleteModal(false);
+                        setDeleteConfirmed(false);
+                        toast.error(
+                          "Account deleted (mock). In production, this would be permanent.",
+                        );
+                      }}
+                      data-ocid="profile.delete.confirm_button"
+                    >
+                      Delete Account
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        )}
 
         {/* Tabs: Posts / Saved */}
         <div>
@@ -8276,7 +10469,7 @@ function ProfilePage({
                 </button>
                 <button
                   type="button"
-                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => {
                     const link = document.createElement("a");
                     link.href = selectedSavedPost.image;
@@ -8287,6 +10480,37 @@ function ProfilePage({
                 >
                   <Download className="w-4 h-4" />
                   Download
+                </button>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => {
+                    setShowOwnProfileShareModal(true);
+                    toast.success("Post shared!");
+                  }}
+                  data-ocid="profile.saved.post.secondary_button"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleFollow(selectedSavedPost.user.id)}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ml-auto"
+                  style={{
+                    background: followedUsers.has(selectedSavedPost.user.id)
+                      ? "var(--app-card)"
+                      : "linear-gradient(135deg, #7c3aed, #f97316)",
+                    color: followedUsers.has(selectedSavedPost.user.id)
+                      ? "var(--app-text-muted)"
+                      : "white",
+                    border: "1px solid var(--app-border)",
+                  }}
+                  data-ocid="profile.saved.post.toggle"
+                >
+                  {followedUsers.has(selectedSavedPost.user.id)
+                    ? "Following"
+                    : "Follow"}
                 </button>
               </div>
             </div>
@@ -8311,7 +10535,33 @@ function ProfilePage({
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <span className="font-semibold text-sm">@_you</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm">@_you</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTaggedAuthorFollowed((v) => !v);
+                      toast.success(
+                        taggedAuthorFollowed
+                          ? "Unfollow किया"
+                          : "Follow किया! 🎉",
+                      );
+                    }}
+                    className="text-xs font-semibold px-3 py-1 rounded-full transition-colors"
+                    style={{
+                      background: taggedAuthorFollowed
+                        ? "transparent"
+                        : "linear-gradient(135deg, #7c3aed, #f97316)",
+                      color: taggedAuthorFollowed
+                        ? "var(--app-text-muted)"
+                        : "white",
+                      border: "1px solid var(--app-border)",
+                    }}
+                    data-ocid="tagged.toggle"
+                  >
+                    {taggedAuthorFollowed ? "Following" : "Follow"}
+                  </button>
+                </div>
                 <button
                   type="button"
                   className="text-muted-foreground hover:text-foreground transition-colors"
@@ -8341,7 +10591,7 @@ function ProfilePage({
                       return next;
                     })
                   }
-                  data-ocid="tagged.toggle"
+                  data-ocid="tagged.checkbox"
                 >
                   <span>
                     {taggedLiked.has(selectedTaggedPost.id) ? "❤️" : "🤍"}
@@ -8691,7 +10941,7 @@ function ProfilePage({
               )}
             </div>
           </div>
-          <div className="flex items-center justify-around px-6 py-4 bg-black/90 border-t border-white/10">
+          <div className="flex items-center justify-around px-4 py-3 bg-black/90 border-t border-white/10">
             <button
               type="button"
               className={`flex flex-col items-center gap-1 text-xs font-medium transition-colors ${savedReelLiked.has(selectedSavedReel.id) ? "text-red-400" : "text-white/70"}`}
@@ -8722,6 +10972,12 @@ function ProfilePage({
             <button
               type="button"
               className="flex flex-col items-center gap-1 text-xs font-medium text-white/70"
+              onClick={() => {
+                const savedReelCommentInput = document.getElementById(
+                  "saved-reel-comment-input",
+                );
+                savedReelCommentInput?.focus();
+              }}
             >
               <MessageCircle className="w-6 h-6" />
               <span>{selectedSavedReel.comments}</span>
@@ -8733,12 +10989,84 @@ function ProfilePage({
               <Bookmark className="w-6 h-6 fill-yellow-400" />
               <span>Saved</span>
             </button>
+            <button
+              type="button"
+              className="flex flex-col items-center gap-1 text-xs font-medium text-white/70"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = selectedSavedReel.image;
+                a.download = "reel.jpg";
+                a.click();
+                toast.success("⬇️ Reel downloaded!");
+              }}
+            >
+              <Download className="w-6 h-6" />
+              <span>Download</span>
+            </button>
+            <button
+              type="button"
+              className="flex flex-col items-center gap-1 text-xs font-medium text-white/70"
+              onClick={() => setSavedReelShareOpen(true)}
+            >
+              <Share2 className="w-6 h-6" />
+              <span>Share</span>
+            </button>
+            <button
+              type="button"
+              className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${followedUsers.has(selectedSavedReel.user.id) ? "text-white/50" : "text-pink-400"}`}
+              onClick={() => onToggleFollow(selectedSavedReel.user.id)}
+            >
+              <UserIcon className="w-6 h-6" />
+              <span>
+                {followedUsers.has(selectedSavedReel.user.id)
+                  ? "Following"
+                  : "Follow"}
+              </span>
+            </button>
+          </div>
+          {/* Comment input */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-black/95 border-t border-white/10">
+            <input
+              id="saved-reel-comment-input"
+              type="text"
+              placeholder="Add a comment..."
+              className="flex-1 bg-white/10 text-white text-sm rounded-full px-4 py-2 outline-none placeholder:text-white/40"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                  toast.success("💬 Comment posted!");
+                  e.currentTarget.value = "";
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="text-pink-400 font-semibold text-sm"
+              onClick={() => {
+                const input = document.getElementById(
+                  "saved-reel-comment-input",
+                ) as HTMLInputElement;
+                if (input?.value.trim()) {
+                  toast.success("💬 Comment posted!");
+                  input.value = "";
+                }
+              }}
+            >
+              Post
+            </button>
           </div>
         </div>
       )}
-      <ShareToFriendModal
+      <GlobalShareSheet
+        open={savedReelShareOpen}
+        onClose={() => setSavedReelShareOpen(false)}
+        title="Check out this reel on Connectly!"
+        url={window.location.href}
+      />
+      <GlobalShareSheet
         open={showOwnProfileShareModal}
         onClose={() => setShowOwnProfileShareModal(false)}
+        title="Check out my Connectly profile!"
+        url={window.location.href}
       />
     </>
   );
@@ -8796,7 +11124,7 @@ function Sidebar({
         <h1
           className="text-2xl font-extrabold"
           style={{
-            background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+            background: "linear-gradient(135deg, #7c3aed, #f97316)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
           }}
@@ -8810,7 +11138,7 @@ function Sidebar({
         type="button"
         onClick={onCreatePost}
         className="mx-3 mb-4 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
-        style={{ background: "linear-gradient(135deg, #ff6b9d, #c44dff)" }}
+        style={{ background: "linear-gradient(135deg, #7c3aed, #f97316)" }}
         data-ocid="create_post.open_modal_button"
       >
         <Plus className="w-4 h-4" />
@@ -8939,7 +11267,7 @@ function BottomNav({
         type="button"
         onClick={onCreatePost}
         className="flex items-center justify-center w-12 h-12 rounded-2xl text-white transition-all hover:opacity-90 active:scale-95"
-        style={{ background: "linear-gradient(135deg, #ff6b9d, #c44dff)" }}
+        style={{ background: "linear-gradient(135deg, #7c3aed, #f97316)" }}
         data-ocid="create_post.open_modal_button"
       >
         <Plus className="w-6 h-6" />
@@ -9115,187 +11443,377 @@ function RightSidebar({
 
 // ─── AI STUDIO PAGE ───────────────────────────────────────────────────────────
 
-function AIStudioPage() {
-  const [writePrompt, setWritePrompt] = useState("");
-  const [writeOutput, setWriteOutput] = useState("");
-  const [writeLoading, setWriteLoading] = useState(false);
-  const [writeError, setWriteError] = useState("");
+function AIStudioPage({
+  isPremium = false,
+  onUpgrade,
+}: { isPremium?: boolean; onUpgrade?: (feat: string) => void } = {}) {
+  const [activeTab, setActiveTab] = useState<"caption" | "bio" | "hashtags">(
+    "caption",
+  );
+  const [prompt, setPrompt] = useState("");
+  const [output, setOutput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedTag, setCopiedTag] = useState<string | null>(null);
+  const [outputTags, setOutputTags] = useState<string[]>([]);
+  const [aiUsageCount, setAiUsageCount] = useState(0);
+  const FREE_LIMIT = 3;
 
-  // Hashtag auto-suggest state
-  const [captionInput, setCaptionInput] = useState("");
-  const [suggestedHashtags, setSuggestedHashtags] = useState<string[]>([]);
-  const [hashtagLoading, setHashtagLoading] = useState(false);
-  const [hashtagError, setHashtagError] = useState("");
-  const [copiedHashtag, setCopiedHashtag] = useState<string | null>(null);
-  const [copiedAll, setCopiedAll] = useState(false);
+  const tabConfig = {
+    caption: {
+      label: "Caption",
+      icon: "✍️",
+      placeholder:
+        "Describe your photo... e.g. sunset at the beach with friends",
+      buttonText: "Generate Captions",
+    },
+    bio: {
+      label: "Bio",
+      icon: "👤",
+      placeholder:
+        "Tell about yourself... e.g. travel lover, foodie, photographer from Mumbai",
+      buttonText: "Generate Bio",
+    },
+    hashtags: {
+      label: "Hashtags",
+      icon: "#️⃣",
+      placeholder:
+        "What's your post about? e.g. morning yoga, healthy lifestyle, travel",
+      buttonText: "Generate Hashtags",
+    },
+  };
 
-  const writeChips = [
-    "Instagram caption",
-    "Bio ideas",
-    "Hashtags",
-    "Story ideas",
-    "Post ideas",
+  function generateMockContent(tab: string, userPrompt: string): string {
+    const words = userPrompt
+      .toLowerCase()
+      .split(" ")
+      .filter((w) => w.length > 2);
+    const kw1 = words[0] || "life";
+    const kw2 = words[1] || "moments";
+    if (tab === "caption") {
+      return [
+        `✨ ${userPrompt.charAt(0).toUpperCase() + userPrompt.slice(1)} — because some moments are too beautiful not to share 🌟`,
+        `Living for these ${kw1} vibes ✨ Every ${kw2} tells a story, and this one is mine 💫 #blessed #grateful`,
+        `When ${kw1} meets ${kw2}, magic happens 🔥 Embracing every moment of this journey 🚀 Drop a ❤️ if you feel this!`,
+      ].join("\n\n");
+    }
+    if (tab === "bio") {
+      return `✨ ${kw1.charAt(0).toUpperCase() + kw1.slice(1)} enthusiast & ${kw2} lover 🌍\nCreating memories one ${kw1} at a time 📸\nDM for collabs 💌\n🏆 Top Creator 2024`;
+    }
+    const base = words.concat([
+      "instagram",
+      "trending",
+      "viral",
+      "reels",
+      "explore",
+      "instagood",
+      "photooftheday",
+      "instadaily",
+      "love",
+      "lifestyle",
+      "photography",
+      "motivation",
+      "inspiration",
+      "happy",
+      "follow",
+      "like",
+      "share",
+      "content",
+      "creator",
+      "india",
+    ]);
+    return base
+      .slice(0, 20)
+      .map((w) => `#${w}`)
+      .join(" ");
+  }
+
+  const BAD_WORDS = [
+    "hate",
+    "kill",
+    "sex",
+    "porn",
+    "nude",
+    "nsfw",
+    "fuck",
+    "shit",
+    "ass",
+    "bitch",
+    "cunt",
+    "slut",
+    "whore",
   ];
+  function filterContent(text: string): string {
+    let filtered = text;
+    for (const w of BAD_WORDS) {
+      const re = new RegExp(w, "gi");
+      filtered = filtered.replace(re, "***");
+    }
+    return filtered;
+  }
 
   async function handleGenerate() {
-    if (!writePrompt.trim()) return;
-    setWriteLoading(true);
-    setWriteError("");
-    setWriteOutput("");
+    if (!prompt.trim()) return;
+    if (!isPremium && aiUsageCount >= FREE_LIMIT) {
+      if (onUpgrade)
+        onUpgrade(
+          "You've used 3 free AI generations today. Upgrade for unlimited access.",
+        );
+      return;
+    }
+    setAiUsageCount((c) => c + 1);
+    setLoading(true);
+    setError("");
+    setOutput("");
+    setOutputTags([]);
     try {
-      const res = await fetch(
-        `https://text.pollinations.ai/${encodeURIComponent(writePrompt)}`,
-      );
-      if (!res.ok) throw new Error("Failed to generate");
-      const text = await res.text();
-      setWriteOutput(text);
+      if (activeTab === "hashtags") {
+        const apiPrompt = `Generate 20 relevant Instagram hashtags for: "${prompt}". Return only hashtags separated by spaces, no explanation.`;
+        let tags: string[] = [];
+        try {
+          const res = await fetch(
+            `https://text.pollinations.ai/${encodeURIComponent(apiPrompt)}`,
+          );
+          if (res.ok) {
+            const text = await res.text();
+            tags = text
+              .trim()
+              .split(/\s+/)
+              .map((t: string) => (t.startsWith("#") ? t : `#${t}`))
+              .filter((t: string) => t.length > 1 && t.length < 30)
+              .slice(0, 20);
+          }
+        } catch {}
+        if (tags.length < 5) {
+          const fallback = generateMockContent("hashtags", prompt);
+          tags = fallback
+            .split(" ")
+            .filter((t) => t.startsWith("#"))
+            .slice(0, 20);
+        }
+        setOutputTags(tags.map((t) => filterContent(t)));
+      } else {
+        let result = "";
+        const apiPrompt =
+          activeTab === "caption"
+            ? `Write 3 creative Instagram captions for: "${prompt}". Each caption should be engaging with emojis, under 200 characters. Separate with blank lines.`
+            : `Write a short engaging Instagram bio for: "${prompt}". Include emojis, under 150 characters, memorable.`;
+        try {
+          const res = await fetch(
+            `https://text.pollinations.ai/${encodeURIComponent(apiPrompt)}`,
+          );
+          if (res.ok) result = await res.text();
+        } catch {}
+        if (!result || result.length < 10)
+          result = generateMockContent(activeTab, prompt);
+        setOutput(filterContent(result));
+      }
     } catch {
-      setWriteError("Generation failed. Please try again.");
+      setError("Generation failed. Please try again.");
     } finally {
-      setWriteLoading(false);
+      setLoading(false);
     }
   }
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(writeOutput);
+    const text = activeTab === "hashtags" ? outputTags.join(" ") : output;
+    await navigator.clipboard.writeText(text).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+    toast.success("Copied to clipboard! 📋");
   }
 
-  async function handleSuggestHashtags() {
-    if (!captionInput.trim()) return;
-    setHashtagLoading(true);
-    setHashtagError("");
-    setSuggestedHashtags([]);
-    try {
-      const prompt = `Generate 15 relevant Instagram hashtags for this caption: "${captionInput}". Return only the hashtags separated by spaces, no explanation, no numbering.`;
-      const res = await fetch(
-        `https://text.pollinations.ai/${encodeURIComponent(prompt)}`,
-      );
-      if (!res.ok) throw new Error("Failed");
-      const text = await res.text();
-      const tokens = text
-        .trim()
-        .split(/\s+/)
-        .map((t: string) => (t.startsWith("#") ? t : `#${t}`))
-        .filter((t: string) => t.length > 1);
-      setSuggestedHashtags(tokens.slice(0, 20));
-    } catch {
-      setHashtagError("Hashtags suggest नहीं हो सके। दोबारा try करें।");
-    } finally {
-      setHashtagLoading(false);
-    }
+  async function handleCopyTag(tag: string) {
+    await navigator.clipboard.writeText(tag).catch(() => {});
+    setCopiedTag(tag);
+    setTimeout(() => setCopiedTag(null), 1500);
   }
 
-  async function handleCopyHashtag(tag: string) {
-    await navigator.clipboard.writeText(tag);
-    setCopiedHashtag(tag);
-    setTimeout(() => setCopiedHashtag(null), 1500);
+  function handleClear() {
+    setPrompt("");
+    setOutput("");
+    setOutputTags([]);
+    setError("");
   }
 
-  async function handleCopyAllHashtags() {
-    await navigator.clipboard.writeText(suggestedHashtags.join(" "));
-    setCopiedAll(true);
-    setTimeout(() => setCopiedAll(false), 2000);
-  }
+  const hasResult = output.length > 0 || outputTags.length > 0;
 
   return (
-    <div className="max-w-2xl mx-auto pb-8" data-ocid="ai.page">
+    <div className="max-w-2xl mx-auto px-4 pb-10" data-ocid="ai.page">
       {/* Header */}
-      <div className="mb-6 flex items-center gap-3">
+      <div className="flex items-center gap-3 mb-5 pt-2">
         <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, #ff6b9d, #c44dff)" }}
+          className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg"
+          style={{ background: "linear-gradient(135deg, #7c3aed, #f97316)" }}
         >
-          <Sparkles className="w-5 h-5 text-white" />
+          <Sparkles className="w-6 h-6 text-white" />
         </div>
         <div>
           <h1
-            className="text-xl font-bold"
+            className="text-2xl font-bold"
             style={{ color: "var(--app-text)" }}
           >
-            AI Studio
+            ✨ AI Studio
           </h1>
           <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
-            Powered by Pollinations AI
+            Fast · Easy · Powerful — AI-powered content
           </p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {/* Chips */}
-        <div className="flex flex-wrap gap-2">
-          {writeChips.map((chip) => (
-            <button
-              type="button"
-              key={chip}
-              onClick={() => setWritePrompt(chip)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium border transition-all hover:opacity-80"
-              style={{
-                borderColor: "var(--app-border)",
-                color: "var(--app-text-muted)",
-                backgroundColor: "var(--app-card)",
-              }}
-            >
-              {chip}
-            </button>
-          ))}
-        </div>
+      {/* AI Disclaimer Banner */}
+      <div
+        className="flex items-start gap-2 px-4 py-3 rounded-xl mb-4 text-sm"
+        style={{
+          backgroundColor: "rgba(234,179,8,0.12)",
+          border: "1px solid rgba(234,179,8,0.4)",
+          color: "var(--app-text)",
+        }}
+        data-ocid="ai.disclaimer.panel"
+      >
+        <span className="text-base flex-shrink-0">⚠️</span>
+        <span
+          className="text-xs leading-relaxed"
+          style={{ color: "var(--app-text)" }}
+        >
+          <strong>Disclaimer:</strong> AI generated content may be inaccurate.
+          Always review before posting.
+        </span>
+      </div>
 
+      {/* Pill Tabs */}
+      <div
+        className="flex gap-1.5 p-1 rounded-2xl mb-5"
+        style={{ backgroundColor: "var(--app-bg)" }}
+        role="tablist"
+        data-ocid="ai.tab"
+      >
+        {(["caption", "bio", "hashtags"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab}
+            onClick={() => {
+              setActiveTab(tab);
+              handleClear();
+            }}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95"
+            style={
+              activeTab === tab
+                ? {
+                    background: "linear-gradient(135deg, #7c3aed, #f97316)",
+                    color: "#fff",
+                  }
+                : { color: "var(--app-text-muted)", background: "transparent" }
+            }
+            data-ocid="ai.tab"
+          >
+            <span className="text-base">{tabConfig[tab].icon}</span>
+            <span>{tabConfig[tab].label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-3">
         {/* Textarea */}
         <Textarea
-          value={writePrompt}
-          onChange={(e) => setWritePrompt(e.target.value)}
-          placeholder="कोई भी prompt लिखो... e.g. Instagram caption for sunset photo"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder={tabConfig[activeTab].placeholder}
           rows={4}
-          className="resize-none rounded-xl border text-sm"
+          className="resize-none rounded-2xl border-2 text-sm"
           style={{
             backgroundColor: "var(--app-card)",
-            borderColor: "var(--app-border)",
+            borderColor: prompt ? "var(--app-accent)" : "var(--app-border)",
             color: "var(--app-text)",
           }}
           data-ocid="ai.write.textarea"
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate();
+          }}
         />
 
-        <Button
-          onClick={handleGenerate}
-          disabled={writeLoading || !writePrompt.trim()}
-          className="w-full h-11 rounded-xl font-semibold text-white"
-          style={{
-            background: writeLoading
-              ? "var(--app-text-muted)"
-              : "linear-gradient(135deg, #ff6b9d, #c44dff)",
-            border: "none",
-          }}
-          data-ocid="ai.write.submit_button"
-        >
-          {writeLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Generate
-            </>
-          )}
-        </Button>
-
-        {writeError && (
-          <div
-            className="p-4 rounded-xl text-sm text-red-400"
-            style={{ backgroundColor: "rgba(239,68,68,0.1)" }}
-            data-ocid="ai.write.error_state"
+        {/* Action row */}
+        <div className="flex gap-2">
+          <Button
+            onClick={handleGenerate}
+            disabled={loading || !prompt.trim()}
+            className="flex-1 h-12 rounded-xl font-bold text-white text-sm shadow-md"
+            style={{
+              background:
+                loading || !prompt.trim()
+                  ? "var(--app-text-muted)"
+                  : "linear-gradient(135deg, #7c3aed, #f97316)",
+              border: "none",
+            }}
+            data-ocid="ai.write.submit_button"
           >
-            {writeError}
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                {tabConfig[activeTab].buttonText}
+              </>
+            )}
+          </Button>
+          {(prompt.length > 0 || hasResult) && (
+            <Button
+              onClick={handleClear}
+              variant="outline"
+              className="h-12 px-4 rounded-xl text-sm"
+              style={{
+                borderColor: "var(--app-border)",
+                color: "var(--app-text-muted)",
+              }}
+              data-ocid="ai.write.secondary_button"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+
+        {/* Loading */}
+        {loading && (
+          <div
+            className="flex items-center gap-3 p-4 rounded-2xl"
+            style={{ backgroundColor: "var(--app-bg)" }}
+            data-ocid="ai.write.loading_state"
+          >
+            <Loader2
+              className="w-5 h-5 animate-spin flex-shrink-0"
+              style={{ color: "var(--app-accent)" }}
+            />
+            <p className="text-sm" style={{ color: "var(--app-text-muted)" }}>
+              {activeTab === "caption" &&
+                "Creating amazing captions for you..."}
+              {activeTab === "bio" && "Writing your perfect bio..."}
+              {activeTab === "hashtags" &&
+                "Finding the best trending hashtags..."}
+            </p>
           </div>
         )}
 
-        {writeOutput && (
+        {/* Error */}
+        {error && (
           <div
-            className="rounded-xl p-4 flex flex-col gap-3"
+            className="p-4 rounded-2xl text-sm"
+            style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "#ef4444" }}
+            data-ocid="ai.write.error_state"
+          >
+            ❌ {error}
+          </div>
+        )}
+
+        {/* Caption / Bio output */}
+        {output && activeTab !== "hashtags" && (
+          <div
+            className="rounded-2xl p-4 flex flex-col gap-3"
             style={{
               backgroundColor: "var(--app-card)",
               border: "1px solid var(--app-border)",
@@ -9304,177 +11822,856 @@ function AIStudioPage() {
           >
             <div className="flex items-center justify-between">
               <span
-                className="text-xs font-semibold"
+                className="text-xs font-bold uppercase tracking-wide"
                 style={{ color: "var(--app-text-muted)" }}
               >
-                Generated Output
+                {activeTab === "caption"
+                  ? "✍️ Generated Captions"
+                  : "👤 Generated Bio"}
               </span>
               <button
                 type="button"
                 onClick={handleCopy}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all"
                 style={{
                   backgroundColor: copied
                     ? "rgba(34,197,94,0.15)"
-                    : "var(--app-border)",
-                  color: copied ? "#22c55e" : "var(--app-text-muted)",
+                    : "rgba(196,77,255,0.15)",
+                  color: copied ? "#22c55e" : "#7c3aed",
+                  border: `1px solid ${copied ? "#22c55e" : "#7c3aed"}`,
                 }}
                 data-ocid="ai.write.button"
               >
                 <Copy className="w-3 h-3" />
-                {copied ? "Copied!" : "Copy"}
+                {copied ? "Copied!" : "Copy All"}
               </button>
             </div>
             <p
               className="text-sm leading-relaxed whitespace-pre-wrap"
               style={{ color: "var(--app-text)" }}
             >
-              {writeOutput}
+              {output}
             </p>
           </div>
         )}
 
-        {/* Divider */}
-        <div
-          style={{ borderTop: "1px solid var(--app-border)", margin: "8px 0" }}
-        />
+        {/* Hashtags chips output */}
+        {outputTags.length > 0 && activeTab === "hashtags" && (
+          <div
+            className="rounded-2xl p-4 flex flex-col gap-3"
+            style={{
+              backgroundColor: "var(--app-card)",
+              border: "1px solid var(--app-border)",
+            }}
+            data-ocid="ai.hashtag.success_state"
+          >
+            <div className="flex items-center justify-between">
+              <span
+                className="text-xs font-bold uppercase tracking-wide"
+                style={{ color: "var(--app-text-muted)" }}
+              >
+                #️⃣ {outputTags.length} Hashtags — tap to copy
+              </span>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all"
+                style={{
+                  backgroundColor: copied
+                    ? "rgba(34,197,94,0.15)"
+                    : "rgba(196,77,255,0.15)",
+                  color: copied ? "#22c55e" : "#7c3aed",
+                  border: `1px solid ${copied ? "#22c55e" : "#7c3aed"}`,
+                }}
+                data-ocid="ai.hashtag.button"
+              >
+                <Copy className="w-3 h-3" />
+                {copied ? "Copied!" : "Copy All"}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {outputTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => handleCopyTag(tag)}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95"
+                  style={{
+                    backgroundColor:
+                      copiedTag === tag
+                        ? "rgba(34,197,94,0.15)"
+                        : "rgba(196,77,255,0.12)",
+                    color: copiedTag === tag ? "#22c55e" : "#7c3aed",
+                    border: `1px solid ${copiedTag === tag ? "#22c55e" : "rgba(196,77,255,0.4)"}`,
+                  }}
+                  data-ocid="ai.hashtag.button"
+                >
+                  {copiedTag === tag ? "✓ Copied" : tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* Hashtag Auto-Suggest Section */}
+        {/* Report AI Content button */}
+        {hasResult && (
+          <button
+            type="button"
+            onClick={() =>
+              toast.success("Reported. Thank you for your feedback.")
+            }
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors hover:bg-destructive/10"
+            style={{
+              borderColor: "var(--app-border)",
+              color: "var(--app-text-muted)",
+            }}
+            data-ocid="ai.write.secondary_button"
+          >
+            🚩 Report AI Content
+          </button>
+        )}
+
+        {/* Tips when no result */}
+        {!hasResult && !loading && (
+          <div
+            className="rounded-2xl p-4"
+            style={{
+              backgroundColor: "var(--app-bg)",
+              border: "1px dashed var(--app-border)",
+            }}
+          >
+            <p
+              className="text-xs font-bold mb-2"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              💡 Tips for {tabConfig[activeTab].label}
+            </p>
+            <ul
+              className="text-xs space-y-1.5"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              {activeTab === "caption" && (
+                <>
+                  <li>• Be specific about your photo/video content</li>
+                  <li>• Include mood, setting, or activity</li>
+                  <li>• Use Ctrl+Enter to generate quickly</li>
+                </>
+              )}
+              {activeTab === "bio" && (
+                <>
+                  <li>• Include your passion and profession</li>
+                  <li>• Mention what makes you unique</li>
+                  <li>• Keep it authentic and engaging</li>
+                </>
+              )}
+              {activeTab === "hashtags" && (
+                <>
+                  <li>• Describe content type and niche</li>
+                  <li>• Include your industry keywords</li>
+                  <li>• Tap any hashtag chip to copy it</li>
+                </>
+              )}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── LANDING PAGE ──────────────────────────────────────────────────────────────
+function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
+  const features = [
+    {
+      icon: "📸",
+      title: "Share Posts",
+      desc: "Share photos, reels, and stories with your community instantly.",
+    },
+    {
+      icon: "🤝",
+      title: "Connect with People",
+      desc: "Follow creators, friends, and businesses. Build your network.",
+    },
+    {
+      icon: "✨",
+      title: "AI Studio",
+      desc: "Generate captions, bios, and hashtags using built-in AI tools.",
+    },
+  ];
+  const benefits = [
+    {
+      icon: "🎓",
+      title: "Students",
+      desc: "Share campus life, connect with classmates and clubs.",
+    },
+    {
+      icon: "🎨",
+      title: "Creators",
+      desc: "Grow your audience with reels, stories, and AI-powered captions.",
+    },
+    {
+      icon: "💼",
+      title: "Business",
+      desc: "Reach customers, run demo ads, and build brand presence.",
+    },
+    {
+      icon: "🌍",
+      title: "Everyone",
+      desc: "A safe, modern social app for all ages 13 and above.",
+    },
+  ];
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: "var(--app-bg)" }}>
+      {/* Nav */}
+      <header
+        className="sticky top-0 z-50 border-b border-border backdrop-blur-sm"
+        style={{ backgroundColor: "var(--app-nav)" }}
+      >
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+          <h1
+            className="text-xl font-extrabold"
+            style={{
+              background: "linear-gradient(135deg, #7c3aed, #f97316)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Connectly
+          </h1>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onGetStarted}
+              className="px-4 py-1.5 text-sm rounded-full border border-border hover:bg-muted transition-colors"
+              style={{ color: "var(--app-text)" }}
+              data-ocid="landing.login.button"
+            >
+              Log In
+            </button>
+            <button
+              type="button"
+              onClick={onGetStarted}
+              className="px-4 py-1.5 text-sm rounded-full font-semibold text-white transition-all"
+              style={{
+                background: "linear-gradient(135deg, #7c3aed, #f97316)",
+              }}
+              data-ocid="landing.primary_button"
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section
+        className="max-w-3xl mx-auto px-4 py-20 text-center"
+        data-ocid="landing.section"
+      >
+        <h2
+          className="text-4xl md:text-5xl font-extrabold mb-4 leading-tight"
+          style={{
+            background: "linear-gradient(135deg, #7c3aed, #f97316)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          Connectly — Share Your World
+        </h2>
+        <p className="text-lg mb-8" style={{ color: "var(--app-text-muted)" }}>
+          The social app for students, creators &amp; businesses
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <button
+            type="button"
+            onClick={onGetStarted}
+            className="px-8 py-3 rounded-2xl font-bold text-white text-base shadow-lg transition-all hover:scale-105 active:scale-95"
+            style={{ background: "linear-gradient(135deg, #7c3aed, #f97316)" }}
+            data-ocid="landing.primary_button"
+          >
+            🚀 Get Started Free
+          </button>
+          <button
+            type="button"
+            onClick={onGetStarted}
+            className="px-8 py-3 rounded-2xl font-semibold text-base border border-border hover:bg-muted transition-colors"
+            style={{ color: "var(--app-text)" }}
+            data-ocid="landing.secondary_button"
+          >
+            Log In
+          </button>
+        </div>
+      </section>
+
+      {/* What is Connectly */}
+      <section
+        className="max-w-5xl mx-auto px-4 py-12"
+        data-ocid="landing.section"
+      >
+        <h3
+          className="text-2xl font-bold text-center mb-8"
+          style={{ color: "var(--app-text)" }}
+        >
+          What is Connectly?
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {features.map((f) => (
+            <div
+              key={f.title}
+              className="rounded-2xl p-6 text-center"
+              style={{
+                backgroundColor: "var(--app-card)",
+                border: "1px solid var(--app-border)",
+              }}
+            >
+              <div className="text-4xl mb-3">{f.icon}</div>
+              <h4
+                className="font-bold text-base mb-2"
+                style={{ color: "var(--app-text)" }}
+              >
+                {f.title}
+              </h4>
+              <p className="text-sm" style={{ color: "var(--app-text-muted)" }}>
+                {f.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Why use Connectly */}
+      <section
+        className="max-w-5xl mx-auto px-4 py-12"
+        data-ocid="landing.section"
+      >
+        <h3
+          className="text-2xl font-bold text-center mb-8"
+          style={{ color: "var(--app-text)" }}
+        >
+          Why use Connectly?
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
+          {benefits.map((b) => (
+            <div
+              key={b.title}
+              className="rounded-2xl p-5 text-center"
+              style={{
+                backgroundColor: "var(--app-card)",
+                border: "1px solid var(--app-border)",
+              }}
+            >
+              <div className="text-3xl mb-2">{b.icon}</div>
+              <h4
+                className="font-bold text-sm mb-1"
+                style={{ color: "var(--app-text)" }}
+              >
+                {b.title}
+              </h4>
+              <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
+                {b.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Mock app screenshots */}
+      <section
+        className="max-w-5xl mx-auto px-4 py-12"
+        data-ocid="landing.section"
+      >
+        <h3
+          className="text-2xl font-bold text-center mb-8"
+          style={{ color: "var(--app-text)" }}
+        >
+          Beautiful, Fast & Easy
+        </h3>
+        <div className="flex justify-center gap-4 flex-wrap">
+          {["Feed", "Reels", "Stories", "AI Studio"].map((screen) => (
+            <div
+              key={screen}
+              className="w-36 h-64 rounded-3xl flex flex-col overflow-hidden shadow-xl border-4"
+              style={{
+                borderColor: "var(--app-border)",
+                backgroundColor: "var(--app-card)",
+              }}
+            >
+              <div
+                className="h-6 flex items-center justify-center text-xs font-bold"
+                style={{
+                  background: "linear-gradient(135deg, #7c3aed, #f97316)",
+                  color: "#fff",
+                }}
+              >
+                {screen}
+              </div>
+              <div className="flex-1 flex flex-col gap-2 p-2">
+                {["a", "b", "c"].map((k) => (
+                  <div
+                    key={k}
+                    className="rounded-lg"
+                    style={{
+                      height: "40px",
+                      backgroundColor: "var(--app-bg)",
+                      opacity: 0.7,
+                    }}
+                  />
+                ))}
+                <div
+                  className="rounded-full mx-auto mt-auto"
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    background: "linear-gradient(135deg, #7c3aed, #f97316)",
+                    opacity: 0.5,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section
+        className="max-w-2xl mx-auto px-4 py-16 text-center"
+        data-ocid="landing.section"
+      >
+        <h3
+          className="text-3xl font-extrabold mb-4"
+          style={{ color: "var(--app-text)" }}
+        >
+          Ready to connect?
+        </h3>
+        <p
+          className="text-base mb-8"
+          style={{ color: "var(--app-text-muted)" }}
+        >
+          Join thousands of users already sharing their world on Connectly.
+        </p>
+        <button
+          type="button"
+          onClick={onGetStarted}
+          className="px-10 py-4 rounded-2xl font-bold text-white text-lg shadow-xl transition-all hover:scale-105 active:scale-95"
+          style={{ background: "linear-gradient(135deg, #7c3aed, #f97316)" }}
+          data-ocid="landing.primary_button"
+        >
+          Join Connectly Free
+        </button>
+      </section>
+
+      {/* Footer */}
+      <footer
+        className="border-t border-border py-8"
+        style={{ backgroundColor: "var(--app-card)" }}
+      >
+        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p
+            className="text-sm font-bold"
+            style={{
+              background: "linear-gradient(135deg, #7c3aed, #f97316)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
+            Connectly
+          </p>
+          <div
+            className="flex flex-wrap gap-4 text-xs"
+            style={{ color: "var(--app-text-muted)" }}
+          >
+            <button
+              type="button"
+              className="hover:underline"
+              data-ocid="landing.about.link"
+            >
+              About
+            </button>
+            <button
+              type="button"
+              className="hover:underline"
+              data-ocid="landing.privacy.link"
+            >
+              Privacy Policy
+            </button>
+            <button
+              type="button"
+              className="hover:underline"
+              data-ocid="landing.terms.link"
+            >
+              Terms of Service
+            </button>
+            <button
+              type="button"
+              className="hover:underline"
+              data-ocid="landing.contact.link"
+            >
+              Contact
+            </button>
+          </div>
+          <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
+            © {new Date().getFullYear()} Connectly. Built with{" "}
+            <a
+              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(typeof window !== "undefined" ? window.location.hostname : "connectly")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:underline"
+              style={{ color: "var(--app-accent)" }}
+            >
+              caffeine.ai
+            </a>
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+// ─── ABOUT PAGE ──────────────────────────────────────────────────────────────
+function AboutPage({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6" data-ocid="about.page">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-2 mb-6 text-sm hover:opacity-70"
+        style={{ color: "var(--app-text-muted)" }}
+        data-ocid="about.back.button"
+      >
+        ← Back
+      </button>
+      <h1
+        className="text-2xl font-extrabold mb-2"
+        style={{ color: "var(--app-text)" }}
+      >
+        About Connectly
+      </h1>
+      <p className="text-sm mb-6" style={{ color: "var(--app-text-muted)" }}>
+        Version 1.0.0
+      </p>
+      <div className="space-y-5 text-sm" style={{ color: "var(--app-text)" }}>
         <div
-          className="rounded-2xl p-5 flex flex-col gap-4"
+          className="rounded-2xl p-5"
           style={{
             backgroundColor: "var(--app-card)",
             border: "1px solid var(--app-border)",
           }}
-          data-ocid="ai.hashtag.panel"
         >
-          <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
-              }}
-            >
-              <Hash className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h2
-                className="text-sm font-bold"
-                style={{ color: "var(--app-text)" }}
-              >
-                Caption से Hashtags Suggest करें
-              </h2>
-              <p className="text-xs" style={{ color: "var(--app-text-muted)" }}>
-                Caption paste करें — AI relevant hashtags suggest करेगा
-              </p>
-            </div>
-          </div>
+          <h2 className="font-bold text-base mb-2">🎯 Our Mission</h2>
+          <p style={{ color: "var(--app-text-muted)" }}>
+            Connectly is a modern social media platform built to help students,
+            creators, and businesses share their stories, grow their audience,
+            and connect with people who matter — all in a safe, fast, and
+            beautiful app.
+          </p>
+        </div>
+        <div
+          className="rounded-2xl p-5"
+          style={{
+            backgroundColor: "var(--app-card)",
+            border: "1px solid var(--app-border)",
+          }}
+        >
+          <h2 className="font-bold text-base mb-2">👥 Who is it for?</h2>
+          <ul className="space-y-2" style={{ color: "var(--app-text-muted)" }}>
+            <li>
+              🎓 <strong>Students</strong> — Share campus life, connect with
+              classmates
+            </li>
+            <li>
+              🎨 <strong>Creators</strong> — Build your audience with reels and
+              AI captions
+            </li>
+            <li>
+              💼 <strong>Businesses</strong> — Reach customers and build brand
+              presence
+            </li>
+            <li>
+              🌍 <strong>Everyone 13+</strong> — A safe, inclusive social space
+            </li>
+          </ul>
+        </div>
+        <div
+          className="rounded-2xl p-5"
+          style={{
+            backgroundColor: "var(--app-card)",
+            border: "1px solid var(--app-border)",
+          }}
+        >
+          <h2 className="font-bold text-base mb-2">✨ Key Features</h2>
+          <ul className="space-y-1" style={{ color: "var(--app-text-muted)" }}>
+            <li>• Posts, Stories & Reels</li>
+            <li>• AI Studio (captions, bios, hashtags)</li>
+            <li>• Direct Messaging & Chat</li>
+            <li>• Privacy Controls & Safety Tools</li>
+            <li>• Internet Identity & Email Login</li>
+          </ul>
+        </div>
+        <div
+          className="rounded-2xl p-5"
+          style={{
+            backgroundColor: "var(--app-card)",
+            border: "1px solid var(--app-border)",
+          }}
+        >
+          <h2 className="font-bold text-base mb-2">📧 Contact</h2>
+          <p style={{ color: "var(--app-text-muted)" }}>
+            support@connectly.app
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          <Textarea
-            value={captionInput}
-            onChange={(e) => setCaptionInput(e.target.value)}
-            placeholder="यहाँ अपना caption लिखें या paste करें..."
-            rows={4}
-            className="resize-none rounded-xl border text-sm"
+// ─── PRIVACY POLICY PAGE ──────────────────────────────────────────────────────
+function PrivacyPolicyPage({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6" data-ocid="privacy.page">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-2 mb-6 text-sm hover:opacity-70"
+        style={{ color: "var(--app-text-muted)" }}
+        data-ocid="privacy.back.button"
+      >
+        ← Back
+      </button>
+      <h1
+        className="text-2xl font-extrabold mb-2"
+        style={{ color: "var(--app-text)" }}
+      >
+        Privacy Policy
+      </h1>
+      <p className="text-xs mb-6" style={{ color: "var(--app-text-muted)" }}>
+        Last updated: April 2026
+      </p>
+      <div
+        className="space-y-4 text-sm"
+        style={{ color: "var(--app-text-muted)" }}
+      >
+        {[
+          {
+            title: "1. Information We Collect",
+            body: "We collect information you provide directly, such as your name, username, email, profile photo, bio, and posts. We also collect usage data like pages visited and features used to improve your experience.",
+          },
+          {
+            title: "2. How We Use Your Information",
+            body: "Your data is used to provide and improve the Connectly service, personalize your feed, enable AI features, and send notifications. We do not sell your personal information to third parties.",
+          },
+          {
+            title: "3. Data Storage",
+            body: "Profile data, posts, and preferences are stored locally on your device using localStorage. No sensitive data is transmitted to external servers beyond what is required for AI content generation.",
+          },
+          {
+            title: "4. AI Content",
+            body: "When you use AI Studio, your prompts are sent to a third-party AI service (Pollinations AI). Do not include sensitive personal information in your prompts.",
+          },
+          {
+            title: "5. Cookies & Tracking",
+            body: "We do not use tracking cookies. Session data is stored in your browser's localStorage only.",
+          },
+          {
+            title: "6. Children's Privacy",
+            body: "Connectly is intended for users aged 13 and above. If you are under 13, please do not use this service.",
+          },
+          {
+            title: "7. Contact",
+            body: "For privacy concerns, contact us at: support@connectly.app",
+          },
+        ].map((section) => (
+          <div
+            key={section.title}
+            className="rounded-2xl p-4"
             style={{
-              backgroundColor: "var(--app-bg)",
-              borderColor: "var(--app-border)",
-              color: "var(--app-text)",
+              backgroundColor: "var(--app-card)",
+              border: "1px solid var(--app-border)",
             }}
-            data-ocid="ai.hashtag.textarea"
-          />
-
-          <Button
-            onClick={handleSuggestHashtags}
-            disabled={hashtagLoading || !captionInput.trim()}
-            className="w-full h-11 rounded-xl font-semibold text-white"
-            style={{
-              background: hashtagLoading
-                ? "var(--app-text-muted)"
-                : "linear-gradient(135deg, #c44dff, #ff6b9d)",
-              border: "none",
-            }}
-            data-ocid="ai.hashtag.submit_button"
           >
-            {hashtagLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Suggesting...
-              </>
-            ) : (
-              <>
-                <Hash className="mr-2 h-4 w-4" />
-                Hashtags Suggest करें
-              </>
-            )}
-          </Button>
+            <h2 className="font-bold mb-2" style={{ color: "var(--app-text)" }}>
+              {section.title}
+            </h2>
+            <p>{section.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-          {hashtagError && (
-            <div
-              className="p-3 rounded-xl text-sm text-red-400"
-              style={{ backgroundColor: "rgba(239,68,68,0.1)" }}
-              data-ocid="ai.hashtag.error_state"
-            >
-              {hashtagError}
-            </div>
-          )}
+// ─── TERMS PAGE ───────────────────────────────────────────────────────────────
+function TermsPage({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6" data-ocid="terms.page">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-2 mb-6 text-sm hover:opacity-70"
+        style={{ color: "var(--app-text-muted)" }}
+        data-ocid="terms.back.button"
+      >
+        ← Back
+      </button>
+      <h1
+        className="text-2xl font-extrabold mb-2"
+        style={{ color: "var(--app-text)" }}
+      >
+        Terms of Service
+      </h1>
+      <p className="text-xs mb-6" style={{ color: "var(--app-text-muted)" }}>
+        Last updated: April 2026
+      </p>
+      <div
+        className="space-y-4 text-sm"
+        style={{ color: "var(--app-text-muted)" }}
+      >
+        {[
+          {
+            title: "1. Acceptance",
+            body: "By using Connectly, you agree to these Terms of Service. If you do not agree, please do not use the app.",
+          },
+          {
+            title: "2. Age Requirement",
+            body: "You must be at least 13 years old to use Connectly. By creating an account, you confirm you meet this requirement.",
+          },
+          {
+            title: "3. Community Guidelines",
+            body: "Connectly is a positive, respectful community. You agree to not post content that is hateful, discriminatory, sexually explicit, violent, or otherwise harmful.",
+          },
+          {
+            title: "4. Prohibited Content",
+            body: "The following is strictly prohibited: child sexual abuse material (CSAM), nudity or pornographic content, hate speech targeting any group, content promoting violence or illegal activity, spam or impersonation of others.",
+          },
+          {
+            title: "5. Reporting",
+            body: "Users can report inappropriate content using the Report button on any post or profile. Reported content is reviewed and removed if it violates these terms.",
+          },
+          {
+            title: "6. Account Termination",
+            body: "We reserve the right to suspend or delete accounts that violate these terms without prior notice.",
+          },
+          {
+            title: "7. Disclaimer",
+            body: "Connectly is provided as-is. AI-generated content may be inaccurate; always review before posting. Ads labeled 'Sponsored · Demo Ad' are for demonstration purposes only.",
+          },
+          {
+            title: "8. Contact",
+            body: "Questions about these terms? Contact us at: support@connectly.app",
+          },
+        ].map((section) => (
+          <div
+            key={section.title}
+            className="rounded-2xl p-4"
+            style={{
+              backgroundColor: "var(--app-card)",
+              border: "1px solid var(--app-border)",
+            }}
+          >
+            <h2 className="font-bold mb-2" style={{ color: "var(--app-text)" }}>
+              {section.title}
+            </h2>
+            <p>{section.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-          {suggestedHashtags.length > 0 && (
-            <div
-              className="rounded-xl p-4 flex flex-col gap-3"
-              style={{
-                backgroundColor: "var(--app-bg)",
-                border: "1px solid var(--app-border)",
-              }}
-              data-ocid="ai.hashtag.success_state"
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className="text-xs font-semibold"
-                  style={{ color: "var(--app-text-muted)" }}
+// ─── CONTACT PAGE ─────────────────────────────────────────────────────────────
+function ContactPage({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6" data-ocid="contact.page">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-2 mb-6 text-sm hover:opacity-70"
+        style={{ color: "var(--app-text-muted)" }}
+        data-ocid="contact.back.button"
+      >
+        ← Back
+      </button>
+      <h1
+        className="text-2xl font-extrabold mb-6"
+        style={{ color: "var(--app-text)" }}
+      >
+        Contact Us
+      </h1>
+      <div className="space-y-4">
+        <div
+          className="rounded-2xl p-5"
+          style={{
+            backgroundColor: "var(--app-card)",
+            border: "1px solid var(--app-border)",
+          }}
+        >
+          <h2
+            className="font-bold text-base mb-3"
+            style={{ color: "var(--app-text)" }}
+          >
+            📧 Support Email
+          </h2>
+          <a
+            href="mailto:support@connectly.app"
+            className="text-sm hover:underline"
+            style={{ color: "#60a5fa" }}
+          >
+            support@connectly.app
+          </a>
+          <p
+            className="text-xs mt-2"
+            style={{ color: "var(--app-text-muted)" }}
+          >
+            We typically respond within 24-48 hours.
+          </p>
+        </div>
+        <div
+          className="rounded-2xl p-5"
+          style={{
+            backgroundColor: "var(--app-card)",
+            border: "1px solid var(--app-border)",
+          }}
+        >
+          <h2
+            className="font-bold text-base mb-3"
+            style={{ color: "var(--app-text)" }}
+          >
+            ❓ FAQ
+          </h2>
+          <div className="space-y-3 text-sm">
+            {[
+              {
+                q: "How do I change my profile picture?",
+                a: "Go to Profile → tap your avatar → Edit Profile.",
+              },
+              {
+                q: "How do I make my account private?",
+                a: "Profile → Settings (gear icon) → Privacy Settings → Toggle Private Account.",
+              },
+              {
+                q: "How do I report a post?",
+                a: "Tap the ⋯ (more) button on any post → Report.",
+              },
+              {
+                q: "Is Connectly free?",
+                a: "Yes! Connectly is completely free to use. A Pro plan is coming soon.",
+              },
+            ].map((faq) => (
+              <div
+                key={faq.q}
+                className="border-b pb-3 last:border-0 last:pb-0"
+                style={{ borderColor: "var(--app-border)" }}
+              >
+                <p
+                  className="font-semibold mb-1"
+                  style={{ color: "var(--app-text)" }}
                 >
-                  {suggestedHashtags.length} hashtags — tap to copy
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyAllHashtags}
-                  className="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all"
-                  style={{
-                    background: copiedAll
-                      ? "rgba(34,197,94,0.15)"
-                      : "linear-gradient(135deg, rgba(255,107,157,0.15), rgba(196,77,255,0.15))",
-                    color: copiedAll ? "#22c55e" : "#c44dff",
-                    border: `1px solid ${copiedAll ? "#22c55e" : "#c44dff"}`,
-                  }}
-                  data-ocid="ai.hashtag.button"
-                >
-                  <Copy className="w-3 h-3" />
-                  {copiedAll ? "Copied!" : "Copy All"}
-                </button>
+                  {faq.q}
+                </p>
+                <p style={{ color: "var(--app-text-muted)" }}>{faq.a}</p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {suggestedHashtags.map((tag) => (
-                  <button
-                    type="button"
-                    key={tag}
-                    onClick={() => handleCopyHashtag(tag)}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105"
-                    style={{
-                      background:
-                        copiedHashtag === tag
-                          ? "rgba(34,197,94,0.15)"
-                          : "linear-gradient(135deg, rgba(255,107,157,0.1), rgba(196,77,255,0.1))",
-                      border: `1px solid ${copiedHashtag === tag ? "#22c55e" : "#c44dff"}`,
-                      color: copiedHashtag === tag ? "#22c55e" : "#ff6b9d",
-                    }}
-                    data-ocid="ai.hashtag.item.1"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -9647,7 +12844,7 @@ function LoginScreen({
         <div className="flex flex-col items-center gap-4">
           <div
             className="rounded-2xl p-1"
-            style={{ background: "linear-gradient(135deg, #ff6b9d, #c44dff)" }}
+            style={{ background: "linear-gradient(135deg, #7c3aed, #f97316)" }}
           >
             <div
               className="rounded-xl p-3"
@@ -9667,7 +12864,7 @@ function LoginScreen({
             <h1
               className="text-4xl font-extrabold tracking-tight"
               style={{
-                background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                background: "linear-gradient(135deg, #7c3aed, #f97316)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}
@@ -9716,7 +12913,7 @@ function LoginScreen({
               style={
                 loginTab === tab
                   ? {
-                      background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                      background: "linear-gradient(135deg, #7c3aed, #f97316)",
                       color: "#fff",
                     }
                   : {
@@ -9740,7 +12937,7 @@ function LoginScreen({
               style={{
                 background: isLoggingIn
                   ? "var(--app-text-muted)"
-                  : "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                  : "linear-gradient(135deg, #7c3aed, #f97316)",
                 border: "none",
               }}
               data-ocid="login.primary_button"
@@ -9782,7 +12979,7 @@ function LoginScreen({
                   className="text-sm font-semibold pb-1 border-b-2 transition-colors"
                   style={
                     authMode === mode
-                      ? { borderColor: "#c44dff", color: "#c44dff" }
+                      ? { borderColor: "#c44dff", color: "#7c3aed" }
                       : {
                           borderColor: "transparent",
                           color: "var(--app-text-muted)",
@@ -9848,7 +13045,7 @@ function LoginScreen({
                 type="submit"
                 className="w-full h-10 rounded-xl font-semibold text-sm text-white"
                 style={{
-                  background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                  background: "linear-gradient(135deg, #7c3aed, #f97316)",
                   border: "none",
                 }}
                 data-ocid="login.submit_button"
@@ -9885,6 +13082,7 @@ function CreatePostDialog({
   const [hashtagError, setHashtagError] = useState("");
   const [location, setLocation] = useState("");
   const [mood, setMood] = useState("");
+  const [websiteLink, setWebsiteLink] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function resetState() {
@@ -9896,6 +13094,7 @@ function CreatePostDialog({
     setHashtagError("");
     setLocation("");
     setMood("");
+    setWebsiteLink("");
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -9961,6 +13160,11 @@ function CreatePostDialog({
       caption,
       location: location.trim() || undefined,
       mood: mood || undefined,
+      websiteLink: websiteLink.trim()
+        ? websiteLink.startsWith("http")
+          ? websiteLink.trim()
+          : `https://${websiteLink.trim()}`
+        : undefined,
       hashtags: [],
       likes: 0,
       comments: 0,
@@ -10018,7 +13222,7 @@ function CreatePostDialog({
                 style={
                   postType === type
                     ? {
-                        background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                        background: "linear-gradient(135deg, #7c3aed, #f97316)",
                         color: "#fff",
                       }
                     : {
@@ -10169,6 +13373,29 @@ function CreatePostDialog({
             />
           </div>
 
+          {/* Website Link */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="create-post-website"
+              className="text-xs font-medium"
+              style={{ color: "var(--app-text-muted)" }}
+            >
+              🔗 Website Link (optional)
+            </label>
+            <Input
+              id="create-post-website"
+              placeholder="Add a link (optional)"
+              value={websiteLink}
+              onChange={(e) => setWebsiteLink(e.target.value)}
+              style={{
+                backgroundColor: "var(--app-input)",
+                borderColor: "var(--app-border)",
+                color: "var(--app-text)",
+              }}
+              data-ocid="create_post.input"
+            />
+          </div>
+
           {/* Mood / Feeling */}
           <div className="flex flex-col gap-2">
             <span
@@ -10206,7 +13433,7 @@ function CreatePostDialog({
                             background:
                               "linear-gradient(135deg, rgba(255,107,157,0.2), rgba(196,77,255,0.2))",
                             border: "1px solid rgba(196,77,255,0.6)",
-                            color: "#c44dff",
+                            color: "#7c3aed",
                             fontWeight: 600,
                           }
                         : {
@@ -10232,7 +13459,7 @@ function CreatePostDialog({
             onClick={handleSuggestHashtags}
             disabled={hashtagLoading || !caption.trim()}
             className="self-start gap-2"
-            style={{ borderColor: "#c44dff", color: "#c44dff" }}
+            style={{ borderColor: "#c44dff", color: "#7c3aed" }}
             data-ocid="create_post.suggest_hashtags_button"
           >
             {hashtagLoading ? (
@@ -10272,7 +13499,7 @@ function CreatePostDialog({
                       background:
                         "linear-gradient(135deg, rgba(255,107,157,0.15), rgba(196,77,255,0.15))",
                       border: "1px solid rgba(196,77,255,0.4)",
-                      color: "#c44dff",
+                      color: "#7c3aed",
                     }}
                     data-ocid="create_post.toggle"
                   >
@@ -10290,7 +13517,7 @@ function CreatePostDialog({
             disabled={!caption.trim()}
             className="w-full font-semibold text-white mt-1"
             style={{
-              background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+              background: "linear-gradient(135deg, #7c3aed, #f97316)",
               border: "none",
             }}
             data-ocid="create_post.submit_button"
@@ -11196,9 +14423,11 @@ function UserProfileModal({
           </div>
         </DialogContent>
       </Dialog>
-      <ShareToFriendModal
+      <GlobalShareSheet
         open={showProfileShareModal}
         onClose={() => setShowProfileShareModal(false)}
+        title={`Check out @${user.username}'s profile on Connectly!`}
+        url={window.location.href}
       />
     </>
   );
@@ -11221,6 +14450,9 @@ export default function App() {
   const [toastNotif, setToastNotif] = useState<Notification | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [viewingUser, setViewingUser] = useState<AppUser | null>(null);
+  const [isPremium, setIsPremium] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState("");
 
   function handleOpenUserProfile(user: AppUser) {
     if (user.username === profile.username || user.id === CURRENT_USER.id) {
@@ -11300,6 +14532,7 @@ export default function App() {
     useTraditionalAuth();
 
   const isLoggedIn = !!identity || !!tradUser;
+  const [showLanding, setShowLanding] = useState(true);
   const combinedPrincipal =
     identity?.getPrincipal().toText() ?? tradUser?.principalId;
   const loginMethod: "internet-identity" | "email" = identity
@@ -11341,6 +14574,14 @@ export default function App() {
             onAddStory={handleAddStory}
             followedUsers={followedUsers}
             onOpenUserProfile={handleOpenUserProfile}
+            onToggleFollow={(id) =>
+              setFollowedUsers((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
           />
         );
       case "search":
@@ -11358,6 +14599,7 @@ export default function App() {
             userReels={posts.filter((p) => p.type === "reel")}
             followedUsers={followedUsers}
             setFollowedUsers={setFollowedUsers}
+            onOpenUserProfile={handleOpenUserProfile}
           />
         );
       case "notifications":
@@ -11405,7 +14647,15 @@ export default function App() {
           />
         );
       case "ai":
-        return <AIStudioPage />;
+        return (
+          <AIStudioPage
+            isPremium={isPremium}
+            onUpgrade={(feat) => {
+              setUpgradeFeature(feat);
+              setShowUpgradeModal(true);
+            }}
+          />
+        );
       default:
         return (
           <HomePage
@@ -11416,6 +14666,14 @@ export default function App() {
             stories={stories}
             onAddStory={handleAddStory}
             followedUsers={followedUsers}
+            onToggleFollow={(id) =>
+              setFollowedUsers((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
           />
         );
     }
@@ -11432,7 +14690,7 @@ export default function App() {
         <h1
           className="text-3xl font-extrabold"
           style={{
-            background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+            background: "linear-gradient(135deg, #7c3aed, #f97316)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
           }}
@@ -11441,7 +14699,7 @@ export default function App() {
         </h1>
         <Loader2
           className="w-8 h-8 animate-spin"
-          style={{ color: "#c44dff" }}
+          style={{ color: "#7c3aed" }}
         />
       </div>
     );
@@ -11449,6 +14707,9 @@ export default function App() {
 
   // Not logged in
   if (!isLoggedIn) {
+    if (showLanding) {
+      return <LandingPage onGetStarted={() => setShowLanding(false)} />;
+    }
     return (
       <LoginScreen
         onLogin={login}
@@ -11486,7 +14747,7 @@ export default function App() {
                 <h1
                   className="text-xl font-extrabold"
                   style={{
-                    background: "linear-gradient(135deg, #ff6b9d, #c44dff)",
+                    background: "linear-gradient(135deg, #7c3aed, #f97316)",
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
                   }}
@@ -11598,6 +14859,103 @@ export default function App() {
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+      {/* Upgrade Modal */}
+      {showUpgradeModal && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+          data-ocid="upgrade.modal"
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl p-6 shadow-2xl"
+            style={{
+              backgroundColor: "var(--app-card)",
+              border: "1px solid var(--app-border)",
+            }}
+          >
+            <div className="text-center mb-6">
+              <div
+                className="w-16 h-16 rounded-2xl mx-auto mb-3 flex items-center justify-center text-3xl"
+                style={{ background: "var(--app-gradient)" }}
+              >
+                ✨
+              </div>
+              <h2
+                className="text-xl font-bold mb-1"
+                style={{ color: "var(--app-text)" }}
+              >
+                Upgrade to Connectly+
+              </h2>
+              <p
+                className="text-2xl font-extrabold"
+                style={{
+                  background: "var(--app-gradient)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
+              >
+                $5/month
+              </p>
+            </div>
+            {upgradeFeature && (
+              <p
+                className="text-xs text-center mb-4 px-3 py-2 rounded-xl"
+                style={{
+                  backgroundColor: "var(--app-border)",
+                  color: "var(--app-text-muted)",
+                }}
+              >
+                🔒 {upgradeFeature}
+              </p>
+            )}
+            <ul className="space-y-2.5 mb-6">
+              {[
+                "Ad-free experience",
+                "Full AI Studio access",
+                "Verified badge ✓",
+                "Exclusive themes",
+                "Priority support",
+              ].map((b) => (
+                <li
+                  key={b}
+                  className="flex items-center gap-3 text-sm"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  <span
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0"
+                    style={{ background: "var(--app-gradient)" }}
+                  >
+                    ✓
+                  </span>
+                  {b}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="w-full py-3 rounded-2xl text-white font-bold text-sm mb-2"
+              style={{ background: "var(--app-gradient)" }}
+              onClick={() => {
+                setIsPremium(true);
+                setShowUpgradeModal(false);
+                toast.success("Welcome to Connectly+ ✨");
+              }}
+              data-ocid="upgrade.confirm_button"
+            >
+              Upgrade Now — $5/month
+            </button>
+            <button
+              type="button"
+              className="w-full py-2 rounded-2xl text-sm font-medium"
+              style={{ color: "var(--app-text-muted)" }}
+              onClick={() => setShowUpgradeModal(false)}
+              data-ocid="upgrade.cancel_button"
+            >
+              Maybe Later
+            </button>
+          </div>
         </div>
       )}
       <Toaster />
